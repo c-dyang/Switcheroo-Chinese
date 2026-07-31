@@ -973,15 +973,18 @@ namespace Switcheroo
             // Clamp Y (ensure it doesn't go above top)
             desiredTopInPixels = Math.Max(monitor.WorkArea.Top, desiredTopInPixels);
 
-            // 物理像素全量定位：PMv2 下 SetWindowPos 的位置/尺寸参数即物理像素，
-            // 不经过任何 WPF DIP 换算——无论窗口当前变换矩阵处于哪个屏的 DPI 都精确。
-            // （旧实现设 Left/Top 依赖矩阵换算：窗口隐藏时矩阵停留在上次所在屏不更新，
-            //   跨 DPI 场景产生 20% 级偏移；实测主屏 120%/副屏 100% 时连主屏都不居中）
-            var hwnd = new WindowInteropHelper(this).EnsureHandle();
-            SetWindowPos(hwnd, IntPtr.Zero,
-                (int)desiredLeftInPixels, (int)desiredTopInPixels,
-                (int)actualWidthInPixels, (int)actualHeightInPixels,
-                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_DEFERERASE);
+            // DIP 属性定位（qxx 等价方案）：Left/Top 以 WPF 设备无关单位设置，
+            // 值 = 目标屏物理坐标 ÷ 目标屏 DPI，与窗口渲染矩阵解耦——WPF 内部 DIP 状态自洽，
+            // 之后任何 DPI 切换/布局重定位都以同一 DIP 值重新映射，位置不再漂移。
+            // 实测验证：qxx 的 Left=(PrimaryScreenWidth/2)-(ActualWidth/2) 在主屏 120% 不偏；
+            // 而物理 SetWindowPos 落位会被 WPF 的 DIP 状态机覆盖（偏右约窗口宽 35%）。
+            // 仅在窗口可见时设置（矩阵已切到目标屏才精确）；隐藏时跳过，位置由
+            // Show 后的 Dispatcher 第二遍精确设置，避免按冻结矩阵换算造成瞬时错位。
+            if (IsVisible)
+            {
+                Left = desiredLeftInPixels / monitor.DpiScale;
+                Top = desiredTopInPixels / monitor.DpiScale;
+            }
         }
 
         /// <summary>
