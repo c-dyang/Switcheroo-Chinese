@@ -978,9 +978,14 @@ namespace Switcheroo
 
         private void CalculateAndSetPosition(MonitorInfo monitor, double widthInDips, double heightInDips)
         {
-            // Convert DIPs to Pixels for monitor math
-            double actualWidthInPixels = widthInDips * monitor.DpiScale;
-            double actualHeightInPixels = heightInDips * monitor.DpiScale;
+            // 用窗口实际渲染尺寸做居中（ActualWidth/ActualHeight 反映 MinWidth=750、
+            // 列布局、内容撑大后的真实宽度）——否则计算宽（如 250）与实际宽（750）
+            // 不一致时窗口中心会偏移（实际宽−计算宽)/2，正是多屏"偏右"的根因。
+            // ActualWidth 为 DIP 单位；隐藏时可能为 0/旧值，用传入值兜底，由 Show 后第二遍修正。
+            double renderWidthDips = ActualWidth > 0 ? ActualWidth : widthInDips;
+            double renderHeightDips = ActualHeight > 0 ? ActualHeight : heightInDips;
+            double actualWidthInPixels = renderWidthDips * monitor.DpiScale;
+            double actualHeightInPixels = renderHeightDips * monitor.DpiScale;
 
             // Horizontal Center
             double physicalCenterOfMonitorX = monitor.WorkArea.Left + (monitor.WorkAreaWidth / 2.0);
@@ -1005,6 +1010,8 @@ namespace Switcheroo
                      "x" + monitor.WorkAreaHeight + " DpiScale=" + monitor.DpiScale.ToString("F3") +
                      " primary=" + monitor.IsPrimary);
             DebugLog("[Pos] wDips=" + widthInDips.ToString("F1") + " hDips=" + heightInDips.ToString("F1") +
+                     " ActualWidth=" + ActualWidth.ToString("F1") + " ActualHeight=" + ActualHeight.ToString("F1") +
+                     " renderW=" + renderWidthDips.ToString("F1") + " renderH=" + renderHeightDips.ToString("F1") +
                      " physW=" + actualWidthInPixels.ToString("F1") + " physH=" + actualHeightInPixels.ToString("F1"));
             DebugLog("[Pos] desiredLeft=" + desiredLeftInPixels.ToString("F1") + " desiredTop=" +
                      desiredTopInPixels.ToString("F1") + " IsVisible=" + IsVisible);
