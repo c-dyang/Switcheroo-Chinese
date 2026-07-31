@@ -171,9 +171,10 @@ namespace Switcheroo
             // 跟踪输入法组合态（中文拼音候选输入中）：组合开始置位、结束复位。
             // 组合期间候选字符串不视为搜索输入、回车仅为确认上屏（Listary 行为——
             // "不接受候选字符串，回车就是字符串输入"）。WPF 无 GetActiveComposition
-            // 静态 API，用 TextInput 生命周期事件维护标志位。
-            tb.PreviewTextInputStart += (s, e) => _imeComposing = true;
-            tb.PreviewTextInputComplete += (s, e) => _imeComposing = false;
+            // 静态 API，用 TextCompositionManager 的 attached 事件（PreviewTextInputStart/Complete）
+            // 维护标志位。
+            TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
+            TextCompositionManager.AddPreviewTextInputCompleteHandler(tb, (s, e) => _imeComposing = false);
 
             KeyDown += (sender, args) =>
             {
