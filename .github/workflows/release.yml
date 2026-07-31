@@ -88,26 +88,6 @@ jobs:
       - name: Build Installers
         run: msbuild Installer\Build.xml /t:Main /p:Configuration=Release /p:Platform="AnyCPU"
 
-      - name: Build changelog
-        shell: pwsh
-        run: |
-          # Actions 的 pwsh 默认 $ErrorActionPreference=stop，外部命令非 0 退出会终止脚本 → 显式关掉
-          $ErrorActionPreference = "Continue"
-          $PSNativeCommandUseErrorActionPreference = $false
-          if ("${{ github.ref }}" -match "^refs/tags/") {
-            $range = "${{ github.ref_name }}.."
-            $title = "Release ${{ github.ref_name }}"
-          } else {
-            $range = "${{ env.LAST_TAG }}..${{ github.sha }}"
-            $title = "Draft Build ${{ env.VERSION }}"
-          }
-          $log = (git log --oneline --no-merges $range 2>$null) -join "`n"
-          if ([string]::IsNullOrWhiteSpace($log) -or $LASTEXITCODE -ne 0) { $log = "No new commits since ${{ env.LAST_TAG }}." }
-          $body = "## $title`n`n$log"
-          "CHANGELOG_BODY<<EOF" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $body | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          "EOF" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-
       - name: Rename artifacts with version
         shell: pwsh
         run: |
@@ -142,8 +122,7 @@ jobs:
             ${{ env.INSTALLER_PATH }}
             ${{ env.PORTABLE_PATH }}
           fail_on_unmatched_files: true
-          generate_release_notes: false
+          generate_release_notes: true
           name: ${{ env.RELEASE_NAME }}
-          body: ${{ env.CHANGELOG_BODY }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
