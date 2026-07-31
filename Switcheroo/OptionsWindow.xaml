@@ -1,7 +1,7 @@
 <Window x:Class="Switcheroo.OptionsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Switcheroo Options" ResizeMode="NoResize" SizeToContent="WidthAndHeight"
+        Title="Switcheroo 选项" ResizeMode="NoResize" SizeToContent="WidthAndHeight"
         ShowInTaskbar="False" WindowStyle="ToolWindow" Height="380"
         MaxWidth="350"
         Background="{DynamicResource WindowBackgroundBrush}">
@@ -12,81 +12,80 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
         <StackPanel Margin="5,5,5,5">
-            <CheckBox Name="HotKeyCheckBox" Margin="5,5,5,1" Checked="HotKeyCheckBox_Checked" Unchecked="HotKeyCheckBox_OnUnchecked">Activate Switcheroo with this shortcut:</CheckBox>
+            <CheckBox Name="HotKeyCheckBox" Margin="5,5,5,1" Checked="HotKeyCheckBox_Checked" Unchecked="HotKeyCheckBox_OnUnchecked">用此快捷键激活 Switcheroo：</CheckBox>
             <TextBox Name="HotkeyPreview" Margin="25,5,0,10"
                      PreviewKeyDown="HotkeyPreview_OnPreviewKeyDown"
                      GotFocus="HotkeyPreview_OnGotFocus"
                      LostFocus="HotkeyPreview_OnLostFocus"
                      Width="150"
                      HorizontalAlignment="Left"/>
-            <CheckBox Name="AltTabCheckBox" Checked="AltTabCheckBox_OnChecked" Unchecked="AltTabCheckBox_OnUnchecked" Margin="5,5,5,1">Activate Switcheroo with Alt+Tab</CheckBox>
+            <CheckBox Name="AltTabCheckBox" Checked="AltTabCheckBox_OnChecked" Unchecked="AltTabCheckBox_OnUnchecked" Margin="5,5,5,1">用 Alt+Tab 激活 Switcheroo</CheckBox>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                Use Switcheroo instead of the integrated task switcher in Windows.
+                使用 Switcheroo 替代 Windows 内置的任务切换器。
             </TextBlock>
-            <CheckBox Name="AutoSwitch" Margin="5,5,5,1">Automatically switch window when releasing Alt + Tab</CheckBox>
+            <CheckBox Name="AutoSwitch" Margin="5,5,5,1">松开 Alt + Tab 时自动切换窗口</CheckBox>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                Faster and more native-like switching between windows.<LineBreak />
+                在窗口间切换更快、更接近原生体验。<LineBreak />
                 <LineBreak />
-                Use <Span FontFamily="Consolas" FontWeight="Bold">Ctrl + Alt + Tab</Span> for displaying Switcheroo with search activated, or
-                press <Span FontFamily="Consolas" FontWeight="Bold">Alt + S</Span> when the Switcheroo overlay appears.
+                使用 <Span FontFamily="Consolas" FontWeight="Bold">Ctrl + Alt + Tab</Span> 可在搜索已激活的状态下显示 Switcheroo；
+                或在 Switcheroo 浮层出现时按 <Span FontFamily="Consolas" FontWeight="Bold">Alt + S</Span>。
             </TextBlock>
-            <CheckBox Name="SwitchOnSingleClickCheckBox" Margin="5,5,5,1">Switch window on single click</CheckBox>
+            <CheckBox Name="SwitchOnSingleClickCheckBox" Margin="5,5,5,1">单击切换窗口</CheckBox>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                If unchecked, you will need to double-click to switch to a window.
+                若未勾选，需双击才能切换到窗口。
             </TextBlock>
-            <TextBlock Margin="5,5,5,1">Middle-click action:</TextBlock>
+            <TextBlock Margin="5,5,5,1">中键操作：</TextBlock>
             <ComboBox Name="MiddleClickActionComboBox" Margin="25,5,0,5" Width="200" HorizontalAlignment="Left">
-                <ComboBoxItem Content="Do nothing" Tag="0"/>
-                <ComboBoxItem Content="Close item under mouse cursor" Tag="1"/>
-                <ComboBoxItem Content="Close highlighted item" Tag="2"/>
+                <ComboBoxItem Content="无操作" Tag="0"/>
+                <ComboBoxItem Content="关闭鼠标光标下的项目" Tag="1"/>
+                <ComboBoxItem Content="关闭高亮项目" Tag="2"/>
             </ComboBox>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                Configure what happens when you middle-click on a window item.
+                设置中键点击窗口项目时的行为。
             </TextBlock>
             <StackPanel Orientation="Horizontal" Margin="5,5,5,1">
                 <CheckBox Name="MaxResultsCheckBox"
                           VerticalAlignment="Center"
                           Checked="MaxResultsCheckBox_Checked"
                           Unchecked="MaxResultsCheckBox_Unchecked">
-                    Limit search results to:
+                    限制搜索结果数量：
                 </CheckBox>
                 <TextBox Name="MaxResultsBox" Width="50" Margin="10,0,0,0" VerticalAlignment="Center" PreviewTextInput="NumberValidationTextBox"/>
             </StackPanel>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                Improving performance by showing fewer results.
+                显示更少结果以提升性能。
             </TextBlock>
-            <CheckBox x:Name="RunAsAdministrator" Margin="5,5,5,1" Content="Run as Administrator *"/>
+            <CheckBox x:Name="RunAsAdministrator" Margin="5,5,5,1" Content="以管理员身份运行 *"/>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                This is needed if you want <Span FontFamily="Consolas" FontWeight="Bold">Alt + Tab</Span> to work when programs
-                running with higher privileges than your user account are in focus.<LineBreak />
+                若希望在使用更高权限的程序获得焦点时 Alt + Tab 仍可用，需要此选项。<LineBreak />
                 <LineBreak />
-                <Italic>* Requires a restart of Switcheroo</Italic>
+                <Italic>* 需要重启 Switcheroo</Italic>
             </TextBlock>
-            <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">Number of columns for most frequently used processes:</TextBlock>
+            <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">常用进程显示的列数：</TextBlock>
             <ComboBox Name="NumberOfAppColumnsComboBox" Margin="25,5,0,10" Width="150" HorizontalAlignment="Left">
                 <ComboBoxItem Content="0" Tag="0"/>
                 <ComboBoxItem Content="1" Tag="1"/>
                 <ComboBoxItem Content="2" Tag="2"/>
                 <ComboBoxItem Content="3" Tag="3"/>
             </ComboBox>
-            <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">Base Column Width (in pixels):</TextBlock>
+            <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">基础列宽（像素）：</TextBlock>
             <TextBox Name="ColumnWidth" Margin="25,5,0,10" Width="150" HorizontalAlignment="Left" />
-            <TextBlock Margin="5,10,5,1">Theme:</TextBlock>
+            <TextBlock Margin="5,10,5,1">主题：</TextBlock>
             <ComboBox Name="ThemeComboBox" Margin="25,5,0,5" Width="150" HorizontalAlignment="Left" SelectionChanged="ThemeComboBox_SelectionChanged">
-                <ComboBoxItem Content="Light" Tag="Light"/>
-                <ComboBoxItem Content="Dark" Tag="Dark"/>
-                <ComboBoxItem Content="System" Tag="System"/>
+                <ComboBoxItem Content="浅色" Tag="Light"/>
+                <ComboBoxItem Content="深色" Tag="Dark"/>
+                <ComboBoxItem Content="跟随系统" Tag="System"/>
             </ComboBox>
             <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
-                Choose the color theme. System follows your Windows theme settings.
+                选择配色主题。「跟随系统」会采用 Windows 的主题设置。
             </TextBlock>
             <Grid Margin="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition />
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
-                <Button Name="Ok" Width="60" Click="Ok_Click" IsDefault="True" Margin="0,0,5,0" Grid.Column="0">OK</Button>
-                <Button Name="Cancel" Width="60" Click="Cancel_Click" IsCancel="True" Margin="5,0,0,0" Grid.Column="1">Cancel</Button>
+                <Button Name="Ok" Width="60" Click="Ok_Click" IsDefault="True" Margin="0,0,5,0" Grid.Column="0">确定</Button>
+                <Button Name="Cancel" Width="60" Click="Cancel_Click" IsCancel="True" Margin="5,0,0,0" Grid.Column="1">取消</Button>
             </Grid>
         </StackPanel>
     </Grid>

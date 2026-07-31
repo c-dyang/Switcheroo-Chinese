@@ -64,32 +64,32 @@
         <DockPanel LastChildFill="True">
             <DockPanel Margin="4,0,4,0" Name="HelpPanel" Background="Transparent" Height="0" DockPanel.Dock="Top">
                 <TextBlock FontSize="10" DockPanel.Dock="Left" Foreground="{DynamicResource PrimaryTextBrush}">
-                    type to search
+                    输入以搜索
                 </TextBlock>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <TextBlock FontSize="10" Margin="0,0,8,0" Foreground="{DynamicResource PrimaryTextBrush}">
                         <TextBlock.ToolTip>
-                            <TextBlock>Press <Bold>tab</Bold> or <Bold>↑↓</Bold> to navigate in the list</TextBlock>
+                            <TextBlock>按 <Bold>Tab</Bold> 或 <Bold>↑↓</Bold> 在列表中导航</TextBlock>
                         </TextBlock.ToolTip>
-                        <Bold>tab</Bold> or <Bold>↑↓</Bold> to navigate
+                        <Bold>Tab</Bold> 或 <Bold>↑↓</Bold> 导航
                     </TextBlock>
                     <TextBlock FontSize="10" Margin="0,0,8,0" Foreground="{DynamicResource PrimaryTextBrush}">
                         <TextBlock.ToolTip>
-                            <TextBlock>Press <Bold>enter</Bold> to open the highlighted window</TextBlock>
+                            <TextBlock>按 <Bold>Enter</Bold> 打开高亮窗口</TextBlock>
                         </TextBlock.ToolTip>
-                        <Bold>enter</Bold> to open a window
+                        <Bold>Enter</Bold> 打开窗口
                     </TextBlock>
                     <TextBlock FontSize="10" Margin="0,0,8,0" Foreground="{DynamicResource PrimaryTextBrush}">
                         <TextBlock.ToolTip>
-                            <TextBlock>Press <Bold>ctrl+w</Bold> to close the highlighted window</TextBlock>
+                            <TextBlock>按 <Bold>Ctrl+W</Bold> 关闭高亮窗口</TextBlock>
                         </TextBlock.ToolTip>
-                        <Bold>ctrl+w</Bold> to close a window
+                        <Bold>Ctrl+W</Bold> 关闭窗口
                     </TextBlock>
                     <TextBlock FontSize="10" Foreground="{DynamicResource PrimaryTextBrush}">
                         <TextBlock.ToolTip>
-                            <TextBlock>Press <Bold>esc</Bold> to dismiss the Switcheroo overlay</TextBlock>
+                            <TextBlock>按 <Bold>Esc</Bold> 关闭 Switcheroo 浮层</TextBlock>
                         </TextBlock.ToolTip>
-                        <Bold>esc</Bold> to dismiss switcheroo
+                        <Bold>Esc</Bold> 关闭 Switcheroo
                     </TextBlock>
                 </StackPanel>
             </DockPanel>
@@ -211,10 +211,10 @@
                             <Style TargetType="Separator" BasedOn="{StaticResource CtxSeparatorStyle}"/>
                         </ContextMenu.Resources>
 
-                        <MenuItem Header="Switch" Click="ContextMenu_Switch" FontWeight="Bold" />
+                        <MenuItem Header="切换" Click="ContextMenu_Switch" FontWeight="Bold" />
                         <Separator />
-                        <MenuItem Header="Close" Click="ContextMenu_Close" />
-                        <MenuItem Header="Pin" Click="ContextMenu_PinUnpin" Tag="PinUnpin">
+                        <MenuItem Header="关闭" Click="ContextMenu_Close" />
+                        <MenuItem Header="置顶" Click="ContextMenu_PinUnpin" Tag="PinUnpin">
                             <MenuItem.Icon>
                                 <TextBlock Text="&#xE718;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
                             </MenuItem.Icon>
@@ -275,8 +275,8 @@
                         </MenuItem>
 
                         <Separator />
-                        <MenuItem Header="Copy Window Title" Click="ContextMenu_CopyWindowTitle" />
-                        <MenuItem Header="Open File Location" Click="ContextMenu_OpenFileLocation" />
+                        <MenuItem Header="复制窗口标题" Click="ContextMenu_CopyWindowTitle" />
+                        <MenuItem Header="打开文件位置" Click="ContextMenu_OpenFileLocation" />
                     </ContextMenu>
 
                     <!--

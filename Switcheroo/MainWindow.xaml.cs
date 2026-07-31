@@ -225,11 +225,11 @@ namespace Switcheroo
             }
             catch (HotkeyAlreadyInUseException)
             {
-                var boxText = "The current hotkey for activating Switcheroo is in use by another program." +
+                var boxText = "当前用于激活 Switcheroo 的热键已被其他程序占用。" +
                               Environment.NewLine +
                               Environment.NewLine +
-                              "You can change the hotkey by right-clicking the Switcheroo icon in the system tray and choosing 'Options'.";
-                MessageBox.Show(boxText, "Hotkey already in use", MessageBoxButton.OK, MessageBoxImage.Warning);
+                              "你可以右键点击系统托盘中的 Switcheroo 图标，选择「选项」来更改热键。";
+                MessageBox.Show(boxText, "热键已被占用", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -281,7 +281,7 @@ namespace Switcheroo
         {
             var icon = new System.Drawing.Icon(Properties.Resources.icon, System.Windows.Forms.SystemInformation.SmallIconSize);
 
-            var runOnStartupMenuItem = new MenuItem("Run on &Startup", (s, e) => RunOnStartup(s as MenuItem))
+            var runOnStartupMenuItem = new MenuItem("开机启动(&S)", (s, e) => RunOnStartup(s as MenuItem))
             {
                 Checked = new AutoStart().IsEnabled
             };
@@ -293,10 +293,10 @@ namespace Switcheroo
                 Visible = true,
                 ContextMenu = new System.Windows.Forms.ContextMenu(new[]
                 {
-                    new MenuItem("&Options", (s, e) => Options()),
+                    new MenuItem("选项(&O)", (s, e) => Options()),
                     runOnStartupMenuItem,
-                    new MenuItem("&About", (s, e) => About()),
-                    new MenuItem("E&xit", (s, e) => Quit())
+                    new MenuItem("关于(&A)", (s, e) => About()),
+                    new MenuItem("退出(&X)", (s, e) => Quit())
                 })
             };
         }
@@ -322,7 +322,7 @@ namespace Switcheroo
             }
             catch (AutoStartException e)
             {
-                MessageBox.Show(e.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(e.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -344,9 +344,9 @@ namespace Switcheroo
                 {
                     var result = MessageBox.Show(
                         string.Format(
-                            "Switcheroo v{0} is available (you have v{1}).\r\n\r\nDo you want to download it?",
+                            "Switcheroo v{0} 已发布（你当前是 v{1}）。\r\n\r\n是否下载更新？",
                             latestVersion, currentVersion),
-                        "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                        "有可用更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
                     if (result == MessageBoxResult.Yes)
                     {
                         Process.Start("https://github.com/kvakulo/Switcheroo/releases/latest");
@@ -578,7 +578,7 @@ namespace Switcheroo
                 tb.TextChanged -= TextChanged;
                 if (_altTabAutoSwitch)
                 {
-                    tb.Text = "Press Alt + S to search";
+                    tb.Text = "按 Alt + S 搜索";
                 }
                 else
                 {
@@ -1262,7 +1262,7 @@ namespace Switcheroo
                 {
                     _altTabAutoSwitch = true;
                     tb.IsEnabled = false;
-                    tb.Text = "Press Alt + S to search";
+                    tb.Text = "按 Alt + S 搜索";
                 }
                 Opacity = 1;
                 
@@ -1434,14 +1434,14 @@ namespace Switcheroo
                             if (menuItem.Tag != null && menuItem.Tag.ToString() == "PinUnpin")
                             {
                                 bool isPinned = IsProcessPinned(window.ProcessTitle);
-                                menuItem.Header = isPinned ? "Unpin" : "Pin";
+                                menuItem.Header = isPinned ? "取消置顶" : "置顶";
                             }
 
                             // Update Class Menu Header to show cleaned class name
                             if (menuItem.Name == "MenuHighlightClassCustom")
                             {
                                 string cleanName = CleanClassName(window.AppWindow.ClassName);
-                                menuItem.Header = $"Custom/Edit '{cleanName}'...";
+                                menuItem.Header = $"自定义/编辑 '{cleanName}'...";
                             }
                         }
                     }
@@ -1654,7 +1654,7 @@ namespace Switcheroo
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to start Windows Explorer: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"无法启动资源管理器：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             e.Handled = true;
         }
@@ -1683,12 +1683,12 @@ namespace Switcheroo
                 }
                 else
                 {
-                    MessageBox.Show($"Unable to find executable path for {selectedWindow.ProcessTitle}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show($"找不到进程 {selectedWindow.ProcessTitle} 的可执行文件路径", "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to start new instance of {selectedWindow.ProcessTitle}: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"无法启动进程 {selectedWindow.ProcessTitle} 的新实例：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             e.Handled = true;
         }
@@ -1828,7 +1828,7 @@ namespace Switcheroo
 
                     // Build the toast notification
                     var builder = new ToastContentBuilder()
-                        .AddText("Switcheroo++ Started")
+                        .AddText("Switcheroo++ 已启动")
                         .AddText(message)
                         .SetToastDuration(ToastDuration.Short);
 
@@ -1846,7 +1846,7 @@ namespace Switcheroo
                 {
                     // Fallback to balloon tip if toast notifications fail
                     Console.WriteLine($"Toast notification failed: {ex.Message}");
-                    _notifyIcon.BalloonTipTitle = "Switcheroo Started";
+                    _notifyIcon.BalloonTipTitle = "Switcheroo 已启动";
                     _notifyIcon.BalloonTipText = message;
                     _notifyIcon.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.None;
                     _notifyIcon.ShowBalloonTip(1000);
@@ -1861,7 +1861,7 @@ namespace Switcheroo
 
             if (!hasCustomHotkey && !hasAltTab)
             {
-                return "No activation shortcuts configured. Use Options to configure.";
+                return "未配置激活快捷键，请在「选项」中设置。";
             }
 
             var parts = new List<string>();
@@ -1886,11 +1886,11 @@ namespace Switcheroo
             }
             else if (parts.Count == 1)
             {
-                return $"Press {parts[0]} to activate";
+                return $"按 {parts[0]} 激活";
             }
             else
             {
-                return $"Press {string.Join(" or ", parts)} to activate";
+                return $"按 {string.Join(" 或 ", parts)} 激活";
             }
         }
 
@@ -2030,7 +2030,7 @@ namespace Switcheroo
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"复制到剪贴板失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -2049,12 +2049,12 @@ namespace Switcheroo
                     }
                     else
                     {
-                        MessageBox.Show("Unable to determine the executable path for this window.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBox.Show("无法确定此窗口的可执行文件路径。", "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to open file location: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"打开文件位置失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -2091,7 +2091,7 @@ namespace Switcheroo
                 string niceClass = CleanClassName(rawClass);
 
                 // Use niceClass for Name, but rawClass for Argument to ensure matching works
-                OpenHighlightDialog(MatchType.WindowClass, rawClass, "Class: " + niceClass);
+                OpenHighlightDialog(MatchType.WindowClass, rawClass, "窗口类：" + niceClass);
             }
         }
 
@@ -2144,7 +2144,7 @@ namespace Switcheroo
                     // Create new class matcher rule with no color and symbol
                     var newRule = new HighlightRule
                     {
-                        Name = "Class: " + CleanClassName(window.AppWindow.ClassName),
+                        Name = "窗口类：" + CleanClassName(window.AppWindow.ClassName),
                         MatchType = MatchType.WindowClass,
                         Argument = window.AppWindow.ClassName,
                         ColorHex = "#00000000", // Transparent
@@ -2188,7 +2188,7 @@ namespace Switcheroo
                     // Create new Class rule
                     string rawClass = window.AppWindow.ClassName;
                     string cleanClass = CleanClassName(rawClass);
-                    AddNewRule("Class: " + cleanClass, MatchType.WindowClass, rawClass, tag);
+                    AddNewRule("窗口类：" + cleanClass, MatchType.WindowClass, rawClass, tag);
                 }
 
                 // Close the Context Menu manually

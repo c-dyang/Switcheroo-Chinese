@@ -130,8 +130,8 @@ namespace Switcheroo
                 {
                     if (_hotkeyViewModel.KeyCode == Key.None)
                     {
-                        MessageBox.Show("No shortcut key has been selected. Please select a key or disable the shortcut.",
-                            "Invalid shortcut", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBox.Show("尚未选择快捷键，请选择一个按键或取消启用快捷键。",
+                            "快捷键无效", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                 
@@ -147,16 +147,15 @@ namespace Switcheroo
             }
             catch (HotkeyAlreadyInUseException)
             {
-                var boxText = "Sorry! The selected shortcut for activating Switcheroo is in use by another program. " +
-                              "Please choose another.";
-                MessageBox.Show(boxText, "Shortcut already in use", MessageBoxButton.OK, MessageBoxImage.Warning);
+                var boxText = "抱歉！用于激活 Switcheroo 的所选快捷键已被其他程序占用，请另选一个。";
+                MessageBox.Show(boxText, "快捷键已被占用", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             if (!AltTabCheckBox.IsChecked.GetValueOrDefault() && !HotKeyCheckBox.IsChecked.GetValueOrDefault())
             {
-                MessageBox.Show("Both activation methods for Switcheroo have been disabled. Switcheroo won't open.",
-                    "No activation method selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Switcheroo 的两种激活方式均已被禁用，程序将无法打开。",
+                    "未选择激活方式", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
             Settings.Default.EnableHotKey = HotKeyCheckBox.IsChecked.GetValueOrDefault();

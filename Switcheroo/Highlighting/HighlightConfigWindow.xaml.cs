@@ -201,7 +201,7 @@ namespace Switcheroo.Highlighting
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show("Invalid Regex Pattern: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show("正则表达式无效：" + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
                 }
@@ -230,6 +230,25 @@ namespace Switcheroo.Highlighting
                     TxtMarker.Text = btn.Content?.ToString();
                 }
             }
+        }
+    }
+
+    public class MatchTypeToChineseConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            return value switch
+            {
+                MatchType.ProcessName => "进程名",
+                MatchType.WindowTitleRegex => "窗口标题(正则)",
+                MatchType.WindowClass => "窗口类",
+                _ => value?.ToString()
+            };
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotImplementedException();
         }
     }
 }
