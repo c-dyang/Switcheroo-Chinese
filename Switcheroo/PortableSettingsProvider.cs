@@ -42,9 +42,29 @@ namespace Switcheroo
         {
             get
             {
+#if PORTABLE
+                // 便携版：配置随 exe 走（解压/拷贝即迁移）
                 return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath),
                     string.Format("{0}.settings", ApplicationName));
+#else
+                // 安装版：固定位置 + 固定文件名（不随版本号变化）——
+                // .NET 默认 LocalFileSettingsProvider 按 AssemblyVersion 分目录隔离配置，
+                // 每次升级版本号目录就换、配置丢失（升级迁移仅 FirstRun 一次，跳版本/混用即失效）。
+                // 统一改用自定义 provider 存固定路径，更新永不丢配置。
+                string dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Switcheroo");
+                Directory.CreateDirectory(dir);
+                return Path.Combine(dir, "settings.xml");
+#endif
             }
+        }
+
+        /// <summary>
+        /// 当前配置文件的实际路径（供 Program.cs 做旧配置迁移判断）。
+        /// </summary>
+        public string SettingsFilePath
+        {
+            get { return _filePath; }
         }
 
         private XmlNode _localSettingsNode

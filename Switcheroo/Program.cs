@@ -21,10 +21,12 @@
 using System;
 using System.Configuration;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading;
+using System.Xml;
 using Switcheroo.Properties;
 
 namespace Switcheroo
@@ -100,9 +102,11 @@ namespace Switcheroo
                         // Log the fact the mutex was abandoned in another process, it will still get aquired
                     }
 
-#if PORTABLE
+                    // 所有构建统一使用自定义配置 provider（PortableSettingsProvider）：
+                    // 安装版存 %AppData%\Switcheroo\settings.xml、便携版存 exe 同目录——
+                    // 固定路径不随版本号变化，彻底解决"每次升级配置丢失"问题
+                    // （.NET 默认 LocalFileSettingsProvider 按版本号分目录，旧方案仅 FirstRun 迁移一次）。
                     MakePortable(Settings.Default);
-#endif
 
                     MigrateUserSettings();
 
@@ -156,9 +160,12 @@ namespace Switcheroo
             return Settings.Default.RunAsAdmin;
         }
 
+        private static string CurrentSettingsFilePath;
+
         private static void MakePortable(ApplicationSettingsBase settings)
         {
             var portableSettingsProvider = new PortableSettingsProvider();
+            CurrentSettingsFilePath = portableSettingsProvider.SettingsFilePath;
             settings.Providers.Add(portableSettingsProvider);
             foreach (SettingsProperty prop in settings.Properties)
             {
@@ -167,13 +174,135 @@ namespace Switcheroo
             settings.Reload();
         }
 
+        /// <summary>
+        /// 首次运行（或首次用新配置机制运行）时的配置迁移：
+        /// 从旧版 .NET 默认位置（%LocalAppData%\Switcheroo\Switcheroo.exe_Url_*\*\user.config，取最新）
+        /// 把用户设置合并到新固定位置配置（安装版 %AppData%\Switcheroo\settings.xml / 便携版 exe 同目录）。
+        /// 旧方案按版本号分目录 + FirstRun 只 Upgrade 一次，跳版本/混用便携与安装版都会丢配置——
+        /// 这里一次性兜底迁移，之后配置固定在单一路径，永不随版本号丢失。
+        /// </summary>
         private static void MigrateUserSettings()
         {
             if (!Settings.Default.FirstRun) return;
 
-            Settings.Default.Upgrade();
+            // 新位置已有配置文件（例如用户手动拷贝过）则跳过迁移
+            if (File.Exists(CurrentSettingsFilePath))
+            {
+                Settings.Default.FirstRun = false;
+                Settings.Default.Save();
+                return;
+            }
+
+            string legacyConfig = FindLatestLegacyUserConfig();
+            if (legacyConfig != null)
+            {
+                try
+                {
+                    MigrateLegacySettings(legacyConfig, CurrentSettingsFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Failed migrating settings from '{legacyConfig}': {ex.Message}");
+                }
+            }
+
             Settings.Default.FirstRun = false;
             Settings.Default.Save();
+        }
+
+        private static string FindLatestLegacyUserConfig()
+        {
+            string baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Switcheroo");
+            if (!Directory.Exists(baseDir)) return null;
+
+            string latest = null;
+            DateTime latestTime = DateTime.MinValue;
+            try
+            {
+                foreach (var f in Directory.GetFiles(baseDir, "user.config", SearchOption.AllDirectories))
+                {
+                    var t = File.GetLastWriteTimeUtc(f);
+                    if (t > latestTime)
+                    {
+                        latestTime = t;
+                        latest = f;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return latest;
+        }
+
+        /// <summary>
+        /// 把旧 user.config 的 &lt;userSettings&gt; 下所有 setting（value 的 InnerText）合并进新配置。
+        /// 与 PortableSettingsProvider 存储等价：新配置 setting 节点的 InnerText = 序列化值。
+        /// FirstRun 由本方法调用方统一管理，跳过。
+        /// </summary>
+        private static void MigrateLegacySettings(string legacyConfigPath, string newConfigPath)
+        {
+            var oldDoc = new XmlDocument();
+            oldDoc.Load(legacyConfigPath);
+
+            var newDoc = new XmlDocument();
+            if (File.Exists(newConfigPath))
+            {
+                newDoc.Load(newConfigPath);
+            }
+            else
+            {
+                newDoc.AppendChild(newDoc.CreateXmlDeclaration("1.0", "utf-8", string.Empty));
+                newDoc.AppendChild(newDoc.CreateElement("settings"));
+            }
+
+            XmlNode localSettings = newDoc.DocumentElement.SelectSingleNode("localSettings");
+            if (localSettings == null)
+            {
+                localSettings = newDoc.CreateElement("localSettings");
+                newDoc.DocumentElement.AppendChild(localSettings);
+            }
+
+            string machineName = Environment.MachineName.ToLowerInvariant();
+            XmlNode machineNode = localSettings.SelectSingleNode(machineName);
+            if (machineNode == null)
+            {
+                machineNode = newDoc.CreateElement(machineName);
+                localSettings.AppendChild(machineNode);
+            }
+
+            int migrated = 0;
+            foreach (XmlNode setting in oldDoc.SelectNodes("//userSettings/*/setting"))
+            {
+                var nameAttr = setting.Attributes["name"];
+                if (nameAttr == null) continue;
+                string name = nameAttr.Value;
+                if (name == "FirstRun") continue; // 由调用方管理
+
+                var valueNode = setting.SelectSingleNode("value");
+                string value = valueNode != null ? valueNode.InnerText : string.Empty;
+
+                var existing = machineNode.SelectSingleNode(string.Format("setting[@name='{0}']", name));
+                if (existing != null)
+                {
+                    existing.InnerText = value;
+                }
+                else
+                {
+                    var el = newDoc.CreateElement("setting");
+                    var attr = newDoc.CreateAttribute("name");
+                    attr.Value = name;
+                    el.Attributes.Append(attr);
+                    el.InnerText = value;
+                    machineNode.AppendChild(el);
+                }
+                migrated++;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(newConfigPath));
+            newDoc.Save(newConfigPath);
+            Console.WriteLine($"[Settings] Migrated {migrated} settings from legacy config '{legacyConfigPath}'");
         }
 
         private static bool IsRunAsAdmin()
