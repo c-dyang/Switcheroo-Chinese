@@ -119,6 +119,12 @@ namespace Switcheroo
             _listBoxes = new List<PerformanceListBox> { ListBoxLeft1, ListBoxLeft2, ListBoxLeft3, ListBoxCenter, ListBoxRight };
             _visibleListBoxes = new List<PerformanceListBox>();
 
+            // 右键菜单打开时刷新黑名单子菜单（ContextMenu Opening 事件在 XAML 解析报 MC3072，改用路由事件）
+            foreach (var listBox in _listBoxes)
+            {
+                listBox.ContextMenuOpening += ListBox_ContextMenuOpening;
+            }
+
             ListBoxLeft1.ItemsSource = _listLeft1;
             ListBoxLeft2.ItemsSource = _listLeft2;
             ListBoxLeft3.ItemsSource = _listLeft3;
@@ -2150,10 +2156,13 @@ namespace Switcheroo
 
         /// <summary>
         /// 右键菜单打开时：填充"从黑名单移除"子菜单（列出当前黑名单进程）。
+        /// 用 ListBox.ContextMenuOpening 挂载（ContextMenu 的 Opening 事件在本项目 XAML
+        /// 环境解析报 MC3072，改用所有 Control 均支持的路由事件）。
         /// </summary>
-        private void ListBoxItemContextMenu_Opening(object sender, ContextMenuEventArgs e)
+        private void ListBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
-            var menu = sender as System.Windows.Controls.ContextMenu;
+            var listBox = sender as System.Windows.Controls.ListBox;
+            var menu = listBox?.ContextMenu;
             var removeMenu = menu?.FindName("BlacklistRemoveMenu") as System.Windows.Controls.MenuItem;
             if (removeMenu == null) return;
 

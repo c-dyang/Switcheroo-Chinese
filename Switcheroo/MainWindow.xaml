@@ -197,7 +197,7 @@
                         </Setter>
                     </Style>
 
-                    <ContextMenu x:Key="ListBoxItemContextMenu" KeyDown="ContextMenu_KeyDown" Opening="ListBoxItemContextMenu_Opening" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource ControlBackgroundBrush}">
+                    <ContextMenu x:Key="ListBoxItemContextMenu" KeyDown="ContextMenu_KeyDown" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource ControlBackgroundBrush}">
                         <ContextMenu.Template>
                             <ControlTemplate TargetType="ContextMenu">
                                 <Border Background="{TemplateBinding Background}"
