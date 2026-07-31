@@ -83,6 +83,8 @@ namespace Switcheroo
         private double _lastVirtualScreenHeight;
         private double _lastDpiX = -1;
         private double _lastDpiY = -1;
+        // 输入法组合态标记（中文拼音候选输入中）：组合期间候选字符串不触发搜索/切换（Listary 行为）
+        private bool _imeComposing;
         // 输入法组合态回车标记（中文输入法确认拼音时的 Enter 不触发窗口切换）
         private bool _imeComposingEnter;
 
@@ -166,20 +168,27 @@ namespace Switcheroo
             // This is done to prevent that the window being focused after the key presses
             // to get 'KeyUp' messages.
 
+            // 跟踪输入法组合态（中文拼音候选输入中）：组合开始置位、结束复位。
+            // 组合期间候选字符串不视为搜索输入、回车仅为确认上屏（Listary 行为——
+            // "不接受候选字符串，回车就是字符串输入"）。WPF 无 GetActiveComposition
+            // 静态 API，用 TextInput 生命周期事件维护标志位。
+            tb.PreviewTextInputStart += (s, e) => _imeComposing = true;
+            tb.PreviewTextInputComplete += (s, e) => _imeComposing = false;
+
             KeyDown += (sender, args) =>
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
                 // 中文输入法组合态（拼音候选输入中）：按键由 IME 处理，不触发任何窗口动作。
                 // 组合态回车 = 确认拼音上屏（回车=字符串输入），绝不能触发切换。
-                // GetActiveComposition 比 ImeProcessedKey 可靠——微软拼音确认候选时
-                // ImeProcessedKey 可能为 Key.None，而 GetActiveComposition 在组合期间恒非 null。
-                if (TextCompositionManager.GetActiveComposition(tb) != null)
+                // 组合态用 PreviewTextInputStart/Complete 维护的 _imeComposing 标志判断，
+                // 比 ImeProcessedKey 可靠——微软拼音确认候选时 ImeProcessedKey 可能为 Key.None。
+                if (_imeComposing)
                 {
                     if (key == Key.Enter) _imeComposingEnter = true;
                     return;
                 }
-                // 兜底：部分输入法组合态不产生 TextComposition，用 ImeProcessedKey 补充判断
+                // 兜底：部分输入法组合态不产生 TextComposition 事件，用 ImeProcessedKey 补充判断
                 if (args.ImeProcessedKey != Key.None)
                 {
                     if (key == Key.Enter) _imeComposingEnter = true;
@@ -1417,7 +1426,7 @@ namespace Switcheroo
             // 输入法组合态（中文拼音候选输入中）：候选字符串不视为搜索输入，
             // 不触发列表过滤（Listary 行为——"不接受候选字符串，回车只是字符串输入"）。
             // 组合结束后（拼音上屏）Text 才真正变化，那时才按真实输入过滤。
-            if (TextCompositionManager.GetActiveComposition(tb) != null)
+            if (_imeComposing)
             {
                 return;
             }
