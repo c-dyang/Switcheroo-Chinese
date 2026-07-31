@@ -88,24 +88,22 @@ jobs:
       - name: Build Installers
         run: msbuild Installer\Build.xml /t:Main /p:Configuration=Release /p:Platform="AnyCPU"
 
-      - name: Build changelog from conventional commits for tagged release
-        id: changelog_tag
-        uses: requarks/changelog-action@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          token: ${{ github.token }}
-          tag: ${{ github.ref_name }}
-          writeToFile: false
-
-      - name: Build changelog from conventional commits for draft release
-        id: changelog_draft
-        uses: requarks/changelog-action@v1
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        with:
-          token: ${{ github.token }}
-          fromTag: ${{ github.sha }}
-          toTag: ${{ env.LAST_TAG }}
-          writeToFile: false
+      - name: Build changelog
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -match "^refs/tags/") {
+            $range = "${{ github.ref_name }}.."
+            $title = "Release ${{ github.ref_name }}"
+          } else {
+            $range = "${{ env.LAST_TAG }}..${{ github.sha }}"
+            $title = "Draft Build ${{ env.VERSION }}"
+          }
+          $log = (git log --oneline --no-merges $range 2>$null) -join "`n"
+          if ([string]::IsNullOrWhiteSpace($log)) { $log = "No new commits since ${{ env.LAST_TAG }}." }
+          $body = "## $title`n`n$log"
+          "CHANGELOG_BODY<<EOF" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $body | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "EOF" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Rename artifacts with version
         shell: pwsh
@@ -143,6 +141,6 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: false
           name: ${{ env.RELEASE_NAME }}
-          body: ${{ steps.changelog_tag.outputs.changes }}${{ steps.changelog_draft.outputs.changes }}
+          body: ${{ env.CHANGELOG_BODY }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
