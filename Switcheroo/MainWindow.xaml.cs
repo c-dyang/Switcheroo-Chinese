@@ -168,25 +168,41 @@ namespace Switcheroo
             // This is done to prevent that the window being focused after the key presses
             // to get 'KeyUp' messages.
 
-            // 跟踪输入法组合态（中文拼音候选输入中）：组合开始/更新置位，文本提交复位。
-            // 组合期间候选字符串不视为搜索输入、回车仅为确认上屏（Listary 行为——
-            // "不接受候选字符串，回车就是字符串输入"）。WPF 的 TextCompositionManager
-            // 无"组合结束"事件，用 PreviewTextInput（最终文本提交）复位标志。
+            // 跟踪输入法组合态（中文拼音候选输入中）：
+            // - Start/Update：组合开始/候选变化 → 置位
+            // - PreviewTextInput：组合提交（拼音上屏）→ 复位 + 预置回车拦截标志。
+            //   关键：IME 确认回车时 WM_KEYDOWN 可能被 IME 消费（WPF 收不到 KeyDown，
+            //   只有 KeyUp 到达），且 PreviewTextInput 先于 KeyDown/KeyUp 触发——
+            //   必须在提交时预置 _imeComposingEnter，KeyUp 才能拦截 Switch。
             TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
             TextCompositionManager.AddPreviewTextInputUpdateHandler(tb, (s, e) => _imeComposing = true);
-            TextCompositionManager.AddPreviewTextInputHandler(tb, (s, e) => _imeComposing = false);
+            TextCompositionManager.AddPreviewTextInputHandler(tb, (s, e) =>
+            {
+                if (_imeComposing)
+                {
+                    _imeComposing = false;
+                    _imeComposingEnter = true; // 本次回车是组合确认，KeyUp 需跳过 Switch
+                }
+            });
 
             KeyDown += (sender, args) =>
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
+                // 组合确认产生的回车（标志已由 PreviewTextInput 预置）：跳过一切窗口动作，KeyUp 消费
+                if (_imeComposingEnter)
+                {
+                    return;
+                }
+
                 // 中文输入法组合态（拼音候选输入中）：按键由 IME 处理，不触发任何窗口动作。
                 // 组合态回车 = 确认拼音上屏（回车=字符串输入），绝不能触发切换。
-                // 组合态用 PreviewTextInputStart/Complete 维护的 _imeComposing 标志判断，
+                // 组合态用 PreviewTextInputStart/Update 维护的 _imeComposing 标志判断，
                 // 比 ImeProcessedKey 可靠——微软拼音确认候选时 ImeProcessedKey 可能为 Key.None。
                 if (_imeComposing)
                 {
                     if (key == Key.Enter) _imeComposingEnter = true;
+                    if (key == Key.Escape) _imeComposing = false; // Esc 取消组合，复位标志
                     return;
                 }
                 // 兜底：部分输入法组合态不产生 TextComposition 事件，用 ImeProcessedKey 补充判断
