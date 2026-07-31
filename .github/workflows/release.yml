@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     branches:
-      - main # Draft releases on regular pushes
+      - master # Draft releases on regular pushes
     tags: # Published releases on version tags
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch: # Allows manual triggering from GitHub UI
