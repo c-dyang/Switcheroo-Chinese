@@ -302,6 +302,11 @@ namespace Switcheroo
                 Checked = new AutoStart().IsEnabled
             };
 
+            // 黑名单管理：黑名单进程的窗口不在切换列表中、无法用窗口右键移除，
+            // 托盘菜单提供全局入口——展开时动态列出黑名单进程，点击即移除。
+            var blacklistMenuItem = new MenuItem("黑名单管理(&B)");
+            blacklistMenuItem.Popup += BlacklistMenuItem_Popup;
+
             _notifyIcon = new NotifyIcon
             {
                 Text = "Switcheroo",
@@ -311,10 +316,53 @@ namespace Switcheroo
                 {
                     new MenuItem("选项(&O)", (s, e) => Options()),
                     runOnStartupMenuItem,
+                    blacklistMenuItem,
                     new MenuItem("关于(&A)", (s, e) => About()),
                     new MenuItem("退出(&X)", (s, e) => Quit())
                 })
             };
+        }
+
+        /// <summary>
+        /// 托盘"黑名单管理"子菜单展开时：动态列出当前黑名单进程，点击即移除。
+        /// </summary>
+        private void BlacklistMenuItem_Popup(object sender, EventArgs e)
+        {
+            var menu = sender as MenuItem;
+            if (menu == null) return;
+            menu.MenuItems.Clear();
+
+            var blacklist = Settings.Default.BlacklistedProcesses;
+            if (blacklist == null || blacklist.Count == 0)
+            {
+                menu.MenuItems.Add(new MenuItem("（无黑名单进程）") { Enabled = false });
+                return;
+            }
+
+            foreach (var proc in blacklist)
+            {
+                string processTitle = proc;
+                menu.MenuItems.Add(new MenuItem("移除 " + processTitle, (s, e2) => RemoveFromBlacklist(processTitle)));
+            }
+        }
+
+        /// <summary>
+        /// 从黑名单移除指定进程（托盘菜单与右键菜单共用），并刷新窗口列表。
+        /// </summary>
+        private void RemoveFromBlacklist(string processTitle)
+        {
+            var blacklist = Settings.Default.BlacklistedProcesses;
+            if (blacklist != null)
+            {
+                var toRemove = new List<string>();
+                foreach (var item in blacklist)
+                {
+                    if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) toRemove.Add(item);
+                }
+                foreach (var item in toRemove) blacklist.Remove(item);
+                Settings.Default.Save();
+                LoadData(InitialFocus.NextItem);
+            }
         }
 
         private void SetUpToastNotifications()
@@ -2189,25 +2237,14 @@ namespace Switcheroo
         }
 
         /// <summary>
-        /// 从黑名单移除指定进程。
+        /// 从黑名单移除指定进程（右键菜单入口，复用公共移除方法）。
         /// </summary>
         private void ContextMenu_RemoveFromBlacklist(object sender, RoutedEventArgs e)
         {
             var menuItem = sender as System.Windows.Controls.MenuItem;
             if (menuItem?.Tag is string processTitle)
             {
-                var blacklist = Settings.Default.BlacklistedProcesses;
-                if (blacklist != null)
-                {
-                    var toRemove = new List<string>();
-                    foreach (var item in blacklist)
-                    {
-                        if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) toRemove.Add(item);
-                    }
-                    foreach (var item in toRemove) blacklist.Remove(item);
-                    Settings.Default.Save();
-                    LoadData(InitialFocus.NextItem);
-                }
+                RemoveFromBlacklist(processTitle);
             }
         }
 
