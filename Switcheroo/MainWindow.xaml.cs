@@ -1358,6 +1358,16 @@ namespace Switcheroo
                     tb.Text = "按 Alt + S 搜索";
                 }
                 Opacity = 1;
+
+                // 窗口可见后 WPF 才完成 DPI 上下文切换（PMv2 跨屏移动触发 WM_DPICHANGED）。
+                // 隐藏状态下的定位/尺寸基于冻结的旧矩阵，这里用实际矩阵重定位收敛一次
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (IsVisible && _currentMonitor != null)
+                    {
+                        CenterWindow(_currentMonitor);
+                    }
+                }), DispatcherPriority.Input);
                 
                 sw.Stop();
 
