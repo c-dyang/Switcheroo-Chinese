@@ -174,7 +174,7 @@ namespace Switcheroo
             // 静态 API，用 TextCompositionManager 的 attached 事件（PreviewTextInputStart/Complete）
             // 维护标志位。
             TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
-            TextCompositionManager.AddPreviewTextInputCompleteHandler(tb, (s, e) => _imeComposing = false);
+            TextCompositionManager.AddTextInputCompleteHandler(tb, (s, e) => _imeComposing = false);
 
             KeyDown += (sender, args) =>
             {
