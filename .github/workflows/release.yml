@@ -122,7 +122,9 @@ jobs:
             ${{ env.INSTALLER_PATH }}
             ${{ env.PORTABLE_PATH }}
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          generate_release_notes: false
           name: ${{ env.RELEASE_NAME }}
+          body: |
+            Switcheroo++ 中文版自动构建 (commit ${{ github.sha }})
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
