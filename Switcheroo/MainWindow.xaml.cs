@@ -1487,24 +1487,57 @@ namespace Switcheroo
 
             var filterResults = filterResultsEnumerable.ToList();
 
-            foreach (var filterResult in filterResults)
+            // 拼音回退：ASCII 搜索词在常规匹配无结果时，匹配窗口标题的拼音（全拼/首字母）。
+            // 支持中文窗口标题的拼音搜索（如标题"哔哩哔哩"，输入 bilibili 或 blbl 可命中）。
+            // 惰性计算（PinyinHelper 带缓存），仅无结果时才触发转换，不影响常规搜索性能。
+            if (filterResults.Count == 0 && IsAsciiSearchQuery(query))
             {
-                if (TitleFormatter.Anonymize)
+                var q = query.ToLowerInvariant();
+                var pinyinMatches = _unfilteredWindowList.Where(w =>
+                    w.PinyinInitials.IndexOf(q, StringComparison.Ordinal) >= 0 ||
+                    w.PinyinFull.IndexOf(q, StringComparison.Ordinal) >= 0).ToList();
+
+                foreach (var vm in pinyinMatches)
                 {
-                    filterResult.AppWindow.FormattedTitle = TitleFormatter.GetFakeTitle(filterResult.AppWindow.HWnd.ToInt32());
+                    vm.FormattedTitle = vm.WindowTitle;
+                    vm.FormattedProcessTitle = vm.ProcessTitle;
+                    _listCenter.Add(vm);
                 }
-                else
+            }
+            else
+            {
+                foreach (var filterResult in filterResults)
                 {
-                    filterResult.AppWindow.FormattedTitle = GetFormattedTitleFromBestResult(filterResult.WindowTitleMatchResults);
+                    if (TitleFormatter.Anonymize)
+                    {
+                        filterResult.AppWindow.FormattedTitle = TitleFormatter.GetFakeTitle(filterResult.AppWindow.HWnd.ToInt32());
+                    }
+                    else
+                    {
+                        filterResult.AppWindow.FormattedTitle = GetFormattedTitleFromBestResult(filterResult.WindowTitleMatchResults);
+                    }
+                    filterResult.AppWindow.FormattedProcessTitle = GetFormattedTitleFromBestResult(filterResult.ProcessTitleMatchResults);
+                    _listCenter.Add(filterResult.AppWindow);
                 }
-                filterResult.AppWindow.FormattedProcessTitle = GetFormattedTitleFromBestResult(filterResult.ProcessTitleMatchResults);
-                _listCenter.Add(filterResult.AppWindow);
             }
 
             if (ListBoxCenter.Items.Count > 0 && ListBoxCenter.SelectedIndex == -1)
             {
                 ListBoxCenter.SelectedIndex = 0;
             }
+        }
+
+        /// <summary>
+        /// 搜索词是否纯 ASCII（字母/数字/英文符号）——拼音回退只对 ASCII 查询生效，
+        /// 中文查询直接走常规过滤（标题本身含中文）。
+        /// </summary>
+        private static bool IsAsciiSearchQuery(string q)
+        {
+            foreach (char c in q)
+            {
+                if (c > 127) return false;
+            }
+            return true;
         }
 
         private static string GetFormattedTitleFromBestResult(IList<MatchResult> matchResults)

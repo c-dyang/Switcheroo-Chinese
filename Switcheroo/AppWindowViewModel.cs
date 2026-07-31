@@ -34,6 +34,21 @@ namespace Switcheroo
 
         #endregion
 
+        // 拼音搜索支持：标题的全拼/首字母（惰性计算 + 内部缓存，供 FilterList 拼音回退匹配）
+        private string _pinyinFull;
+
+        public string PinyinFull
+        {
+            get { return _pinyinFull ?? (_pinyinFull = PinyinHelper.GetFull(WindowTitle)); }
+        }
+
+        private string _pinyinInitials;
+
+        public string PinyinInitials
+        {
+            get { return _pinyinInitials ?? (_pinyinInitials = PinyinHelper.GetInitials(WindowTitle)); }
+        }
+
         #region Bindable properties
 
         public IntPtr HWnd

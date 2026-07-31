@@ -75,6 +75,9 @@
     <Reference Include="Stfu, Version=0.1.10.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\Stfu.0.1.10\lib\net40\Stfu.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.International.Converters.PinYinConverter">
+      <HintPath>..\packages\Microsoft.International.Converters.PinYinConverter.1.0.0\lib\net20\Microsoft.International.Converters.PinYinConverter.dll</HintPath>
+    </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
