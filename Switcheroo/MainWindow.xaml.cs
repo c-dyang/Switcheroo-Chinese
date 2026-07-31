@@ -85,9 +85,11 @@ namespace Switcheroo
         private double _lastDpiY = -1;
         // 输入法组合态标记（中文拼音候选输入中）：组合期间候选字符串不触发搜索/切换（Listary 行为）
         private bool _imeComposing;
-        // 最近一次组合提交的时间：用于区分"IME 确认回车"与"组合结束后用户的正常回车"。
-        // 仅靠标志位会在"空格/数字选候选"（同样结束组合）后误拦后续回车。
+        // 最近一次组合提交的时间：IME 确认回车兜底判断（WndProc 未吞到时的后备）
         private DateTime _imeCompositionEndTime = DateTime.MinValue;
+        // WndProc 层的组合结束待处理标志 + 时刻：ENDCOMPOSITION 后的回车判定为 IME 确认键
+        private bool _imeEndCompositionPending;
+        private DateTime _imeEndCompositionTime = DateTime.MinValue;
 
         // New collections for each column
         private ObservableCollection<AppWindowViewModel> _listLeft1;
@@ -169,24 +171,12 @@ namespace Switcheroo
             // This is done to prevent that the window being focused after the key presses
             // to get 'KeyUp' messages.
 
-            // 跟踪输入法组合态（中文拼音候选输入中）：
-            // - Start/Update：组合开始/候选变化 → 置位
-            // - PreviewTextInput：组合提交（拼音上屏）→ 复位 + 记录提交时刻。
-            //   IME 确认回车时 WM_KEYDOWN 可能被 IME 消费（WPF 收不到 KeyDown、只有 KeyUp
-            //   到达），且 PreviewTextInput 先于 KeyUp 触发——KeyUp 的 Enter 需检查
-            //   "回车是否紧跟组合提交（<150ms）"来判断是否为 IME 确认键。
-            //   注意：空格/数字选候选也会结束组合触发 PreviewTextInput，但提交时刻与
-            //   用户后续按回车间隔远，时间窗判断可避免误拦（单纯标志位会误拦）。
-            TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
-            TextCompositionManager.AddPreviewTextInputUpdateHandler(tb, (s, e) => _imeComposing = true);
-            TextCompositionManager.AddPreviewTextInputHandler(tb, (s, e) =>
-            {
-                if (_imeComposing)
-                {
-                    _imeComposing = false;
-                    _imeCompositionEndTime = DateTime.Now;
-                }
-            });
+            // 输入法组合态跟踪：由 WndProc 处理 WM_IME_STARTCOMPOSITION/ENDCOMPOSITION
+            // 消息维护 _imeComposing（见 MainWindow_OnLoaded 挂载的 ImeWndProc）。
+            // 组合态下候选字符串不视为搜索输入、回车仅为确认上屏（Listary 行为）；
+            // IME 确认回车的 WM_KEYDOWN/KEYUP 在 WndProc 层直接吞掉（handled=true），
+            // WPF 事件根本收不到，从根源避免误触发切换。WPF 的 TextCompositionManager
+            // 事件在 .NET Framework 下有已知缺陷（dotnet/wpf#6194），弃用。
 
             KeyDown += (sender, args) =>
             {
@@ -194,14 +184,13 @@ namespace Switcheroo
 
                 // 中文输入法组合态（拼音候选输入中）：按键由 IME 处理，不触发任何窗口动作。
                 // 组合态回车 = 确认拼音上屏（回车=字符串输入），绝不能触发切换。
-                // 组合态用 PreviewTextInputStart/Update 维护的 _imeComposing 标志判断，
-                // 比 ImeProcessedKey 可靠——微软拼音确认候选时 ImeProcessedKey 可能为 Key.None。
+                // （正常情况下确认回车已被 WndProc 吞掉，这里仅作组合态冗余拦截）
                 if (_imeComposing)
                 {
                     if (key == Key.Escape) _imeComposing = false; // Esc 取消组合，复位标志
                     return;
                 }
-                // 兜底：部分输入法组合态不产生 TextComposition 事件，用 ImeProcessedKey 补充判断
+                // 兜底：部分输入法组合态不产生 WM_IME_* 消息，用 ImeProcessedKey 补充判断
                 if (args.ImeProcessedKey != Key.None)
                 {
                     return;
@@ -235,9 +224,9 @@ namespace Switcheroo
                 // ... But only when the keys are release, the action is actually executed
                 if (key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
                 {
-                    // IME 确认回车：组合刚提交（<150ms 内）——回车只是确认拼音上屏，不切换窗口。
-                    // 无法用标志位判断（空格/数字选候选同样结束组合），时间窗判断更可靠。
-                    if ((DateTime.Now - _imeCompositionEndTime).TotalMilliseconds < 150)
+                    // 兜底（主路径是 WndProc 吞掉确认回车）：若 IME 未发 WM_IME_ENDCOMPOSITION
+                    // 或 hook 未挂载，确认回车漏到此处——按"组合刚结束(<500ms)"判定为确认键。
+                    if ((DateTime.Now - _imeCompositionEndTime).TotalMilliseconds < 500)
                     {
                         _imeCompositionEndTime = DateTime.MinValue;
                         return;
@@ -1931,6 +1920,81 @@ namespace Switcheroo
         private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
         {
             DisableSystemMenu();
+
+            // 挂载 IME WndProc：在窗口消息层处理输入法组合生命周期（WM_IME_*）。
+            // 比 WPF TextCompositionManager 可靠——IME 确认回车时 WM_KEYDOWN 可能被 IME
+            // 消费（WPF 收不到 KeyDown 只有 KeyUp），且 PreviewTextInput 时序不稳定
+            // （.NET Framework 下 TextComposition 有已知缺陷 dotnet/wpf#6194）。
+            // 在 WndProc 层直接吞掉组合确认回车（handled=true），WPF 事件根本收不到，
+            // 从根源避免"拼音回车误触发窗口切换"。
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                var source = HwndSource.FromHwnd(hwnd);
+                if (source != null)
+                {
+                    source.AddHook(ImeWndProc);
+                }
+            }
+        }
+
+        // ---- IME 组合生命周期处理（窗口消息层）----
+        private const int WM_IME_STARTCOMPOSITION = 0x010D;
+        private const int WM_IME_ENDCOMPOSITION = 0x010E;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
+        private const int VK_RETURN = 0x0D;
+        // 组合结束后的"确认键时间窗"：ENDCOMPOSITION 后 500ms 内的回车判定为 IME 确认键。
+        // 空格/数字选候选同样触发 ENDCOMPOSITION，但用户不会在 500ms 内立刻再按回车切换。
+        private const double ImeConfirmKeyWindowMs = 500;
+
+        private IntPtr ImeWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            switch (msg)
+            {
+                case WM_IME_STARTCOMPOSITION:
+                    _imeComposing = true;
+                    break;
+
+                case WM_IME_ENDCOMPOSITION:
+                    _imeComposing = false;
+                    _imeEndCompositionPending = true;
+                    _imeEndCompositionTime = DateTime.Now;
+                    _imeCompositionEndTime = DateTime.Now; // 同步给 WPF 层兜底
+                    break;
+
+                case WM_KEYDOWN:
+                    // 组合结束后的确认键：回车（IME 未消费 KeyDown 的场景）
+                    if (wParam == (IntPtr)VK_RETURN && IsImeConfirmKey())
+                    {
+                        handled = true;
+                        return IntPtr.Zero;
+                    }
+                    // 非回车键到达 → 消费/清除"组合结束待确认"状态（避免空格选候选后误吞回车）
+                    _imeEndCompositionPending = false;
+                    break;
+
+                case WM_KEYUP:
+                    // 组合结束后的确认键（IME 已消费 KeyDown、只剩 KeyUp 的场景）
+                    if (wParam == (IntPtr)VK_RETURN && IsImeConfirmKey())
+                    {
+                        handled = true;
+                        return IntPtr.Zero;
+                    }
+                    break;
+            }
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// 判断当前按键是否为"IME 组合确认键"：组合刚结束（ENDCOMPOSITION 后 500ms 内）的回车。
+        /// </summary>
+        private bool IsImeConfirmKey()
+        {
+            if (!_imeEndCompositionPending) return false;
+            bool isConfirm = (DateTime.Now - _imeEndCompositionTime).TotalMilliseconds < ImeConfirmKeyWindowMs;
+            _imeEndCompositionPending = false;
+            return isConfirm;
         }
 
         private void DisableSystemMenu()
