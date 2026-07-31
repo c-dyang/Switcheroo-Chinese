@@ -95,7 +95,8 @@
             </DockPanel>
             <Grid DockPanel.Dock="Top" PreviewMouseDown="SearchBoxContainer_PreviewMouseDown">
                 <TextBox Name="tb" Padding="5" VerticalAlignment="Top" TextChanged="TextChanged" FontSize="15"
-                         VerticalContentAlignment="Center" Background="{DynamicResource InputBackgroundBrush}" Foreground="{DynamicResource PrimaryTextBrush}">
+                         VerticalContentAlignment="Center" Background="{DynamicResource InputBackgroundBrush}" Foreground="{DynamicResource PrimaryTextBrush}"
+                         InputMethod.IsInputMethodEnabled="False">
                     <TextBox.InputBindings>
                         <!-- For now, leave these here.  Would it be better to route them upward? -->
                         <KeyBinding Command="local:MainWindow.ScrollListUpCommand" Key="Up" />
