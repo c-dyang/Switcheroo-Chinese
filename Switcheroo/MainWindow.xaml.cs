@@ -170,8 +170,16 @@ namespace Switcheroo
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
-                // 中文输入法组合态（如拼音输入中）：按键由 IME 处理，不触发任何窗口动作。
-                // 组合态回车 = 确认拼音上屏，绝不能触发切换（ImeProcessedKey 非 None 即 IME 在处理）
+                // 中文输入法组合态（拼音候选输入中）：按键由 IME 处理，不触发任何窗口动作。
+                // 组合态回车 = 确认拼音上屏（回车=字符串输入），绝不能触发切换。
+                // GetActiveComposition 比 ImeProcessedKey 可靠——微软拼音确认候选时
+                // ImeProcessedKey 可能为 Key.None，而 GetActiveComposition 在组合期间恒非 null。
+                if (TextCompositionManager.GetActiveComposition(tb) != null)
+                {
+                    if (key == Key.Enter) _imeComposingEnter = true;
+                    return;
+                }
+                // 兜底：部分输入法组合态不产生 TextComposition，用 ImeProcessedKey 补充判断
                 if (args.ImeProcessedKey != Key.None)
                 {
                     if (key == Key.Enter) _imeComposingEnter = true;
@@ -1405,6 +1413,14 @@ namespace Switcheroo
         private void TextChanged(object sender, TextChangedEventArgs args)
         {
             if (!tb.IsEnabled) return;
+
+            // 输入法组合态（中文拼音候选输入中）：候选字符串不视为搜索输入，
+            // 不触发列表过滤（Listary 行为——"不接受候选字符串，回车只是字符串输入"）。
+            // 组合结束后（拼音上屏）Text 才真正变化，那时才按真实输入过滤。
+            if (TextCompositionManager.GetActiveComposition(tb) != null)
+            {
+                return;
+            }
 
             if (string.IsNullOrEmpty(tb.Text))
             {
