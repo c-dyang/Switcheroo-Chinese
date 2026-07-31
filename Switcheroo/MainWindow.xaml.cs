@@ -85,8 +85,9 @@ namespace Switcheroo
         private double _lastDpiY = -1;
         // 输入法组合态标记（中文拼音候选输入中）：组合期间候选字符串不触发搜索/切换（Listary 行为）
         private bool _imeComposing;
-        // 输入法组合态回车标记（中文输入法确认拼音时的 Enter 不触发窗口切换）
-        private bool _imeComposingEnter;
+        // 最近一次组合提交的时间：用于区分"IME 确认回车"与"组合结束后用户的正常回车"。
+        // 仅靠标志位会在"空格/数字选候选"（同样结束组合）后误拦后续回车。
+        private DateTime _imeCompositionEndTime = DateTime.MinValue;
 
         // New collections for each column
         private ObservableCollection<AppWindowViewModel> _listLeft1;
@@ -170,10 +171,12 @@ namespace Switcheroo
 
             // 跟踪输入法组合态（中文拼音候选输入中）：
             // - Start/Update：组合开始/候选变化 → 置位
-            // - PreviewTextInput：组合提交（拼音上屏）→ 复位 + 预置回车拦截标志。
-            //   关键：IME 确认回车时 WM_KEYDOWN 可能被 IME 消费（WPF 收不到 KeyDown，
-            //   只有 KeyUp 到达），且 PreviewTextInput 先于 KeyDown/KeyUp 触发——
-            //   必须在提交时预置 _imeComposingEnter，KeyUp 才能拦截 Switch。
+            // - PreviewTextInput：组合提交（拼音上屏）→ 复位 + 记录提交时刻。
+            //   IME 确认回车时 WM_KEYDOWN 可能被 IME 消费（WPF 收不到 KeyDown、只有 KeyUp
+            //   到达），且 PreviewTextInput 先于 KeyUp 触发——KeyUp 的 Enter 需检查
+            //   "回车是否紧跟组合提交（<150ms）"来判断是否为 IME 确认键。
+            //   注意：空格/数字选候选也会结束组合触发 PreviewTextInput，但提交时刻与
+            //   用户后续按回车间隔远，时间窗判断可避免误拦（单纯标志位会误拦）。
             TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
             TextCompositionManager.AddPreviewTextInputUpdateHandler(tb, (s, e) => _imeComposing = true);
             TextCompositionManager.AddPreviewTextInputHandler(tb, (s, e) =>
@@ -181,7 +184,7 @@ namespace Switcheroo
                 if (_imeComposing)
                 {
                     _imeComposing = false;
-                    _imeComposingEnter = true; // 本次回车是组合确认，KeyUp 需跳过 Switch
+                    _imeCompositionEndTime = DateTime.Now;
                 }
             });
 
@@ -189,33 +192,24 @@ namespace Switcheroo
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
-                // 组合确认产生的回车（标志已由 PreviewTextInput 预置）：跳过一切窗口动作，KeyUp 消费
-                if (_imeComposingEnter)
-                {
-                    return;
-                }
-
                 // 中文输入法组合态（拼音候选输入中）：按键由 IME 处理，不触发任何窗口动作。
                 // 组合态回车 = 确认拼音上屏（回车=字符串输入），绝不能触发切换。
                 // 组合态用 PreviewTextInputStart/Update 维护的 _imeComposing 标志判断，
                 // 比 ImeProcessedKey 可靠——微软拼音确认候选时 ImeProcessedKey 可能为 Key.None。
                 if (_imeComposing)
                 {
-                    if (key == Key.Enter) _imeComposingEnter = true;
                     if (key == Key.Escape) _imeComposing = false; // Esc 取消组合，复位标志
                     return;
                 }
                 // 兜底：部分输入法组合态不产生 TextComposition 事件，用 ImeProcessedKey 补充判断
                 if (args.ImeProcessedKey != Key.None)
                 {
-                    if (key == Key.Enter) _imeComposingEnter = true;
                     return;
                 }
 
                 // Opacity is set to 0 right away so it appears that action has been taken right away...
                 if (key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
                 {
-                    _imeComposingEnter = false;
                     Opacity = 0;
                 }
                 else if ((args.Key == Key.Escape) || (args.Key == Key.Q && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)))
@@ -235,19 +229,19 @@ namespace Switcheroo
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
-                // 输入法组合态回车已在 KeyDown 拦截，KeyUp 一并跳过（否则 Switch 仍会执行）
-                if (_imeComposingEnter)
-                {
-                    _imeComposingEnter = false;
-                    return;
-                }
-
                 // Debugging output
                 // Console.WriteLine("KeyUp: " + key + " Modifiers: " + Keyboard.Modifiers + " AutoSwitch: " + _altTabAutoSwitch + " SystemKey: " + args.SystemKey);
 
                 // ... But only when the keys are release, the action is actually executed
                 if (key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
                 {
+                    // IME 确认回车：组合刚提交（<150ms 内）——回车只是确认拼音上屏，不切换窗口。
+                    // 无法用标志位判断（空格/数字选候选同样结束组合），时间窗判断更可靠。
+                    if ((DateTime.Now - _imeCompositionEndTime).TotalMilliseconds < 150)
+                    {
+                        _imeCompositionEndTime = DateTime.MinValue;
+                        return;
+                    }
                     Switch();
                 }
                 // Handle both Esc key and Alt+Q to dismiss Switcheroo
