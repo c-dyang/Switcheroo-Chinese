@@ -304,7 +304,10 @@ namespace Switcheroo
 
             // 黑名单管理：黑名单进程的窗口不在切换列表中、无法用窗口右键移除，
             // 托盘菜单提供全局入口——展开时动态列出黑名单进程，点击即移除。
+            // 注意：WinForms MenuItem 只有 MenuItems 非空时才作为"可展开子菜单"，
+            // 空子项点击无响应（Popup 不触发）——必须预置占位子项。
             var blacklistMenuItem = new MenuItem("黑名单管理(&B)");
+            blacklistMenuItem.MenuItems.Add(new MenuItem("…") { Enabled = false });
             blacklistMenuItem.Popup += BlacklistMenuItem_Popup;
 
             _notifyIcon = new NotifyIcon
