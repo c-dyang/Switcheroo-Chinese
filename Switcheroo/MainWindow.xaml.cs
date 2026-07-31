@@ -809,7 +809,33 @@ namespace Switcheroo
         private const uint SWP_NOACTIVATE = 0x0010;
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOCOPYBITS = 0x0100;
-        private const uint SWP_DEFERERASE = 0x2000;        
+        private const uint SWP_DEFERERASE = 0x2000;
+
+        // ---- 定位调试日志（debug 版）----
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WinRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out WinRect rect);
+
+        private static void DebugLog(string msg)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "switcheroo_debug.log"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + Environment.NewLine);
+            }
+            catch
+            {
+            }
+        }        
 
         /// <summary>
         /// Moves the window to the target monitor based on raw pixel coordinates. After this call,
@@ -820,6 +846,7 @@ namespace Switcheroo
             if (!IsVisible)
             {
                 var hwnd = new WindowInteropHelper(this).EnsureHandle();
+                DebugLog("[Ensure] SetWindowPos to (" + monitor.WorkArea.Left + "," + monitor.WorkArea.Top + ") IsVisible=" + IsVisible);
                 SetWindowPos(hwnd, IntPtr.Zero, monitor.WorkArea.Left, monitor.WorkArea.Top, 0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOCOPYBITS | SWP_DEFERERASE);
             }
         }
@@ -973,6 +1000,15 @@ namespace Switcheroo
             // Clamp Y (ensure it doesn't go above top)
             desiredTopInPixels = Math.Max(monitor.WorkArea.Top, desiredTopInPixels);
 
+            DebugLog("[Pos] monitor WorkArea=(" + monitor.WorkArea.Left + "," + monitor.WorkArea.Top + ")-(" +
+                     monitor.WorkArea.Right + "," + monitor.WorkArea.Bottom + ") size=" + monitor.WorkAreaWidth +
+                     "x" + monitor.WorkAreaHeight + " DpiScale=" + monitor.DpiScale.ToString("F3") +
+                     " primary=" + monitor.IsPrimary);
+            DebugLog("[Pos] wDips=" + widthInDips.ToString("F1") + " hDips=" + heightInDips.ToString("F1") +
+                     " physW=" + actualWidthInPixels.ToString("F1") + " physH=" + actualHeightInPixels.ToString("F1"));
+            DebugLog("[Pos] desiredLeft=" + desiredLeftInPixels.ToString("F1") + " desiredTop=" +
+                     desiredTopInPixels.ToString("F1") + " IsVisible=" + IsVisible);
+
             // DIP 属性定位（qxx 等价方案）：Left/Top 以 WPF 设备无关单位设置，
             // 值 = 目标屏物理坐标 ÷ 目标屏 DPI，与窗口渲染矩阵解耦——WPF 内部 DIP 状态自洽，
             // 之后任何 DPI 切换/布局重定位都以同一 DIP 值重新映射，位置不再漂移。
@@ -984,6 +1020,23 @@ namespace Switcheroo
             {
                 Left = desiredLeftInPixels / monitor.DpiScale;
                 Top = desiredTopInPixels / monitor.DpiScale;
+                DebugLog("[Pos] SET Left=" + Left.ToString("F1") + " Top=" + Top.ToString("F1"));
+
+                GetDpi(out double dpiX, out double dpiY);
+                DebugLog("[Pos] after-set actualDpi=" + dpiX.ToString("F1") + "x" + dpiY.ToString("F1") +
+                         " Left=" + Left.ToString("F1") + " Top=" + Top.ToString("F1"));
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    WinRect r;
+                    if (GetWindowRect(hwnd, out r))
+                        DebugLog("[Pos] GetWindowRect=(" + r.Left + "," + r.Top + ")-(" + r.Right + "," + r.Bottom +
+                                 ") w=" + (r.Right - r.Left) + " h=" + (r.Bottom - r.Top));
+                }
+            }
+            else
+            {
+                DebugLog("[Pos] SKIP not-visible 位置由 Show 后第二遍设置");
             }
         }
 
@@ -1287,9 +1340,14 @@ namespace Switcheroo
                 // 抄 Flow Launcher InitializePosition 的"调用两次 workaround 多屏对齐"（issue #2910）
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
+                    DebugLog("[Dispatcher] 第二遍 CenterWindow 触发 (hotkey 路径)");
                     if (IsVisible && _currentMonitor != null)
                     {
                         CenterWindow(_currentMonitor);
+                    }
+                    else
+                    {
+                        DebugLog("[Dispatcher] 跳过 IsVisible=" + IsVisible + " monitorNull=" + (_currentMonitor == null));
                     }
                 }), DispatcherPriority.Input);
             }
@@ -1366,9 +1424,14 @@ namespace Switcheroo
                 // 隐藏状态下的定位/尺寸基于冻结的旧矩阵，这里用实际矩阵重定位收敛一次
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
+                    DebugLog("[Dispatcher] 第二遍 CenterWindow 触发 (AltTab 路径)");
                     if (IsVisible && _currentMonitor != null)
                     {
                         CenterWindow(_currentMonitor);
+                    }
+                    else
+                    {
+                        DebugLog("[Dispatcher] 跳过 IsVisible=" + IsVisible + " monitorNull=" + (_currentMonitor == null));
                     }
                 }), DispatcherPriority.Input);
                 
