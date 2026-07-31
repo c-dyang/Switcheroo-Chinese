@@ -78,6 +78,14 @@ namespace Switcheroo
         private HighlightService _highlightService;
         private HighlightConfigWindow _highlightConfigWindow;
 
+        // 屏幕/DPI 变化检测（抄 Flow Launcher）：分辨率或 DPI 变化时失效 _currentMonitor 缓存
+        private double _lastVirtualScreenWidth;
+        private double _lastVirtualScreenHeight;
+        private double _lastDpiX = -1;
+        private double _lastDpiY = -1;
+        // 输入法组合态回车标记（中文输入法确认拼音时的 Enter 不触发窗口切换）
+        private bool _imeComposingEnter;
+
         // New collections for each column
         private ObservableCollection<AppWindowViewModel> _listLeft1;
         private ObservableCollection<AppWindowViewModel> _listLeft2;
@@ -162,9 +170,18 @@ namespace Switcheroo
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
 
+                // 中文输入法组合态（如拼音输入中）：按键由 IME 处理，不触发任何窗口动作。
+                // 组合态回车 = 确认拼音上屏，绝不能触发切换（ImeProcessedKey 非 None 即 IME 在处理）
+                if (args.ImeProcessedKey != Key.None)
+                {
+                    if (key == Key.Enter) _imeComposingEnter = true;
+                    return;
+                }
+
                 // Opacity is set to 0 right away so it appears that action has been taken right away...
                 if (key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
                 {
+                    _imeComposingEnter = false;
                     Opacity = 0;
                 }
                 else if ((args.Key == Key.Escape) || (args.Key == Key.Q && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)))
@@ -183,6 +200,13 @@ namespace Switcheroo
             KeyUp += (sender, args) =>
             {
                 var key = (args.Key == Key.System) ? args.SystemKey : args.Key;
+
+                // 输入法组合态回车已在 KeyDown 拦截，KeyUp 一并跳过（否则 Switch 仍会执行）
+                if (_imeComposingEnter)
+                {
+                    _imeComposingEnter = false;
+                    return;
+                }
 
                 // Debugging output
                 // Console.WriteLine("KeyUp: " + key + " Modifiers: " + Keyboard.Modifiers + " AutoSwitch: " + _altTabAutoSwitch + " SystemKey: " + args.SystemKey);
@@ -858,7 +882,8 @@ namespace Switcheroo
 
             // 2. Calculate Width
             double calculatedWidth = numVisibleColumns * columnWidthInDips;
-            double maxWidth = monitor.WpfWorkAreaWidth * 0.95;
+            // 物理像素宽度上限 → 按窗口实际变换矩阵换算为 DIP（跨 DPI 屏幕正确）
+            double maxWidth = TransformPixelsToDIP(monitor.WorkAreaWidth * 0.95, 0).X;
             double finalWidth = Math.Min(calculatedWidth, maxWidth);
             
             // Apply Width
@@ -877,7 +902,8 @@ namespace Switcheroo
             long tCalculateAndSetWidth = sw.ElapsedMilliseconds;
 
             // 3. Calculate Height (Manually, to avoid UpdateLayout/Measure)
-            double maxHeight = monitor.WpfWorkAreaHeight * 0.9;
+            // 物理像素高度上限 → 按窗口实际变换矩阵换算为 DIP
+            double maxHeight = TransformPixelsToDIP(0, monitor.WorkAreaHeight * 0.9).Y;
 
             if (Border.MaxHeight != maxHeight)
                 Border.MaxHeight = maxHeight;
@@ -947,9 +973,81 @@ namespace Switcheroo
             // Clamp Y (ensure it doesn't go above top)
             desiredTopInPixels = Math.Max(monitor.WorkArea.Top, desiredTopInPixels);
 
-            // Location = new Point(desiredLeftInPixels / monitor.DpiScale, desiredTopInPixels / monitor.DpiScale);
-            Left = desiredLeftInPixels / monitor.DpiScale;
-            Top = desiredTopInPixels / monitor.DpiScale;
+            // 用窗口实际变换矩阵把物理像素目标位换算为 DIP。
+            // 注意：不能除以 monitor.DpiScale（目标屏 DPI）——PerMonitorV2 下 WPF 的换算基准
+            // 跟随窗口当前所在屏（由 WM_DPICHANGED 维护），跨 DPI 移动且窗口隐藏时不更新，
+            // 用 monitor.DpiScale 假设会导致 20% 级偏移（主屏 120% / 副屏 100% 场景）
+            var dip = TransformPixelsToDIP(desiredLeftInPixels, desiredTopInPixels);
+            Left = dip.X;
+            Top = dip.Y;
+        }
+
+        /// <summary>
+        /// 读取窗口当前实际 DPI（抄 Flow Launcher GetDpi）：从 CompositionTarget 实际矩阵读取，
+        /// 而非假设目标显示器 DPI——PerMonitorV2 下矩阵跟随窗口当前所在屏。
+        /// </summary>
+        private void GetDpi(out double dpiX, out double dpiY)
+        {
+            var source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+            {
+                var matrix = source.CompositionTarget.TransformToDevice;
+                dpiX = 96 * matrix.M11;
+                dpiY = 96 * matrix.M22;
+            }
+            else
+            {
+                dpiX = 96;
+                dpiY = 96;
+            }
+        }
+
+        /// <summary>
+        /// 物理像素 → DIP（抄 Flow Launcher Win32Helper.TransformPixelsToDIP）：
+        /// 用窗口实际 CompositionTarget 的 TransformFromDevice 反向矩阵换算，
+        /// 保证与 WPF 渲染基准一致，跨 DPI 屏幕定位精确。
+        /// </summary>
+        private Point TransformPixelsToDIP(double unitX, double unitY)
+        {
+            Matrix matrix;
+            var source = PresentationSource.FromVisual(this);
+            if (source != null)
+            {
+                matrix = source.CompositionTarget.TransformFromDevice;
+            }
+            else
+            {
+                // 项目锁定 C# 7.3，不能用 using 声明，用传统 using 块
+                using (var src = new HwndSource(new HwndSourceParameters()))
+                {
+                    matrix = src.CompositionTarget.TransformFromDevice;
+                }
+            }
+            return new Point((int)(matrix.M11 * unitX), (int)(matrix.M22 * unitY));
+        }
+
+        /// <summary>
+        /// 检测虚拟屏幕尺寸或 DPI 是否变化（显示器拔插/缩放调整，抄 Flow Launcher
+        /// AdjustPositionForResolutionChange 的检测逻辑）。返回 true 表示需要重新获取显示器信息。
+        /// </summary>
+        private bool DisplayMetricsChanged()
+        {
+            GetDpi(out double dpiX, out double dpiY);
+            double screenWidth = SystemParameters.VirtualScreenWidth;
+            double screenHeight = SystemParameters.VirtualScreenHeight;
+
+            bool changed = _lastDpiX > 0 &&
+                           (_lastVirtualScreenWidth != screenWidth ||
+                            _lastVirtualScreenHeight != screenHeight ||
+                            _lastDpiX != dpiX ||
+                            _lastDpiY != dpiY);
+
+            _lastVirtualScreenWidth = screenWidth;
+            _lastVirtualScreenHeight = screenHeight;
+            _lastDpiX = dpiX;
+            _lastDpiY = dpiY;
+
+            return changed;
         }
 
         /// <summary>
@@ -1183,6 +1281,12 @@ namespace Switcheroo
 
             if (Visibility != Visibility.Visible)
             {
+                // 屏幕/DPI 变化检测（抄 Flow Launcher）：分辨率或 DPI 变化时失效缓存的 monitor
+                if (DisplayMetricsChanged())
+                {
+                    _currentMonitor = null;
+                }
+
                 _foregroundWindow = SystemWindow.ForegroundWindow;
 
                 // Get the monitor where the mouse cursor is located
@@ -1196,6 +1300,17 @@ namespace Switcheroo
                 Activate();
                 Keyboard.Focus(tb);
                 Opacity = 1;
+
+                // 窗口可见后 WPF 才完成 DPI 上下文切换（PMv2 下跨屏移动触发 WM_DPICHANGED）。
+                // 隐藏状态下矩阵停留在上次所在屏，位置/宽度会按错误基准换算——这里用实际矩阵重定位一次，
+                // 抄 Flow Launcher InitializePosition 的"调用两次 workaround 多屏对齐"（issue #2910）
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (IsVisible && _currentMonitor != null)
+                    {
+                        CenterWindow(_currentMonitor);
+                    }
+                }), DispatcherPriority.Input);
             }
             else
             {
