@@ -237,13 +237,21 @@ namespace Switcheroo.Highlighting
     {
         public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
-            return value switch
+            if (value is MatchType)
             {
-                MatchType.ProcessName => "进程名",
-                MatchType.WindowTitleRegex => "窗口标题(正则)",
-                MatchType.WindowClass => "窗口类",
-                _ => value?.ToString()
-            };
+                switch ((MatchType)value)
+                {
+                    case MatchType.ProcessName:
+                        return "进程名";
+                    case MatchType.WindowTitleRegex:
+                        return "窗口标题(正则)";
+                    case MatchType.WindowClass:
+                        return "窗口类";
+                    default:
+                        return value.ToString();
+                }
+            }
+            return value?.ToString();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
