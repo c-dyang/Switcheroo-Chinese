@@ -58,51 +58,57 @@ namespace Switcheroo
         }
 
         /// <summary>
-        /// 单个字符的拼音（小写，无声调）；非汉字返回空串或自身（字母数字）。
+        /// 单个字符的拼音（小写，无声调）；非汉字返回空串或自身（ASCII 字母数字）。
+        /// 注意：汉字（如"哔"）的 char.IsLetterOrDigit 为 true，必须先判汉字再判 ASCII，
+        /// 否则汉字会被 ASCII 分支拦下返回空串、永远轮不到 PinYinConverter 转换。
         /// </summary>
         private static string GetCharPinyin(char c)
         {
-            if (char.IsLetterOrDigit(c))
+            if (c >= 0x4e00 && c <= 0x9fff)
             {
-                if (c < 128) return char.ToLowerInvariant(c).ToString();
-                return ""; // 非 ASCII 字母（如全角）跳过
-            }
-            if (c < 0x4e00 || c > 0x9fff) return ""; // 非汉字
-
-            lock (LockObj)
-            {
-                if (Cache.TryGetValue(c, out var cached)) return cached;
-            }
-
-            string result = "";
-            try
-            {
-                var cc = new ChineseChar(c);
-                if (cc.Pinyins != null)
+                // 汉字：查拼音缓存
+                lock (LockObj)
                 {
-                    foreach (var p in cc.Pinyins)
+                    if (Cache.TryGetValue(c, out var cached)) return cached;
+                }
+
+                string result = "";
+                try
+                {
+                    var cc = new ChineseChar(c);
+                    if (cc.Pinyins != null)
                     {
-                        if (!string.IsNullOrEmpty(p))
+                        foreach (var p in cc.Pinyins)
                         {
-                            foreach (var ch in p)
+                            if (!string.IsNullOrEmpty(p))
                             {
-                                if (char.IsLetter(ch)) result += char.ToLowerInvariant(ch);
+                                foreach (var ch in p)
+                                {
+                                    if (char.IsLetter(ch)) result += char.ToLowerInvariant(ch);
+                                }
+                                break; // 取第一个读音（多音字简化）
                             }
-                            break; // 取第一个读音（多音字简化）
                         }
                     }
                 }
-            }
-            catch
-            {
-                result = ""; // 转换失败按无拼音处理
+                catch
+                {
+                    result = ""; // 转换失败按无拼音处理
+                }
+
+                lock (LockObj)
+                {
+                    if (!Cache.ContainsKey(c)) Cache[c] = result;
+                }
+                return result;
             }
 
-            lock (LockObj)
+            // 非汉字：ASCII 字母数字保留（小写），其他字符跳过
+            if (char.IsLetterOrDigit(c) && c < 128)
             {
-                if (!Cache.ContainsKey(c)) Cache[c] = result;
+                return char.ToLowerInvariant(c).ToString();
             }
-            return result;
+            return "";
         }
     }
 }
