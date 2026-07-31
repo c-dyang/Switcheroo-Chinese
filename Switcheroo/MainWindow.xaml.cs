@@ -168,13 +168,13 @@ namespace Switcheroo
             // This is done to prevent that the window being focused after the key presses
             // to get 'KeyUp' messages.
 
-            // 跟踪输入法组合态（中文拼音候选输入中）：组合开始置位、结束复位。
+            // 跟踪输入法组合态（中文拼音候选输入中）：组合开始/更新置位，文本提交复位。
             // 组合期间候选字符串不视为搜索输入、回车仅为确认上屏（Listary 行为——
-            // "不接受候选字符串，回车就是字符串输入"）。WPF 无 GetActiveComposition
-            // 静态 API，用 TextCompositionManager 的 attached 事件（PreviewTextInputStart/Complete）
-            // 维护标志位。
+            // "不接受候选字符串，回车就是字符串输入"）。WPF 的 TextCompositionManager
+            // 无"组合结束"事件，用 PreviewTextInput（最终文本提交）复位标志。
             TextCompositionManager.AddPreviewTextInputStartHandler(tb, (s, e) => _imeComposing = true);
-            TextCompositionManager.AddTextInputCompleteHandler(tb, (s, e) => _imeComposing = false);
+            TextCompositionManager.AddPreviewTextInputUpdateHandler(tb, (s, e) => _imeComposing = true);
+            TextCompositionManager.AddPreviewTextInputHandler(tb, (s, e) => _imeComposing = false);
 
             KeyDown += (sender, args) =>
             {
