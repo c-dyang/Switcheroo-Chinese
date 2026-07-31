@@ -951,12 +951,12 @@ namespace Switcheroo
 
         private void CalculateAndSetPosition(MonitorInfo monitor, double widthInDips, double heightInDips)
         {
-            // 用窗口实际渲染尺寸做居中（ActualWidth/ActualHeight 反映 MinWidth=750、
-            // 列布局、内容撑大后的真实宽度）——否则计算宽（如 250）与实际宽（750）
-            // 不一致时窗口中心会偏移（实际宽−计算宽)/2，正是多屏"偏右"的根因。
-            // ActualWidth 为 DIP 单位；隐藏时可能为 0/旧值，用传入值兜底，由 Show 后第二遍修正。
-            double renderWidthDips = ActualWidth > 0 ? ActualWidth : widthInDips;
-            double renderHeightDips = ActualHeight > 0 ? ActualHeight : heightInDips;
+            // 用实际渲染尺寸做居中（ActualWidth/ActualHeight 反映 MinWidth=750、列布局撑大后的真实宽度）
+            // 隐藏时 ActualWidth 可能为 0/旧值，用 Max(widthInDips, MinWidth) 兜底——
+            // MinWidth 是 WPF 强制最小 DIP 宽度，计算尺寸若小于它，窗口会被撑大导致中心偏移
+            // （实测窗口恒为 750 DIP，而计算宽仅 250 → 中心偏右 250px，正是多屏"偏右"根因）。
+            double renderWidthDips = Math.Max(ActualWidth, Math.Max(widthInDips, MinWidth));
+            double renderHeightDips = Math.Max(ActualHeight, heightInDips);
             double actualWidthInPixels = renderWidthDips * monitor.DpiScale;
             double actualHeightInPixels = renderHeightDips * monitor.DpiScale;
 
@@ -973,18 +973,14 @@ namespace Switcheroo
             double maxTop = monitor.WorkArea.Top + monitor.WorkAreaHeight - actualHeightInPixels;
             double desiredTopInPixels = Math.Max(monitor.WorkArea.Top, Math.Min(goldenTop, maxTop));
 
-            // DIP 属性定位（qxx 等价方案）：Left/Top 以 WPF 设备无关单位设置，
-            // 值 = 目标屏物理坐标 ÷ 目标屏 DPI，与窗口渲染矩阵解耦——WPF 内部 DIP 状态自洽，
-            // 之后任何 DPI 切换/布局重定位都以同一 DIP 值重新映射，位置不再漂移。
-            // 实测验证：qxx 的 Left=(PrimaryScreenWidth/2)-(ActualWidth/2) 在主屏 120% 不偏；
-            // 而物理 SetWindowPos 落位会被 WPF 的 DIP 状态机覆盖（偏右约窗口宽 35%）。
-            // 仅在窗口可见时设置（矩阵已切到目标屏才精确）；隐藏时跳过，位置由
-            // Show 后的 Dispatcher 第二遍精确设置，避免按冻结矩阵换算造成瞬时错位。
-            if (IsVisible)
-            {
-                Left = desiredLeftInPixels / monitor.DpiScale;
-                Top = desiredTopInPixels / monitor.DpiScale;
-            }
+            // 物理像素一次定位：PMv2 下 SetWindowPos 的位置/尺寸参数即物理像素，与 WPF 矩阵状态无关，
+            // Show 前一次落位即精确，无需二次定位（二次定位 = 窗口先显示在角落再跳转，产生闪烁）。
+            // 位置左缘实测精确（9.3.1.10 日志 GetWindowRect=1780），尺寸已按 MinWidth 修正防撑大偏移。
+            var hwnd = new WindowInteropHelper(this).EnsureHandle();
+            SetWindowPos(hwnd, IntPtr.Zero,
+                (int)desiredLeftInPixels, (int)desiredTopInPixels,
+                (int)actualWidthInPixels, (int)actualHeightInPixels,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_DEFERERASE);
         }
 
         /// <summary>
@@ -1281,17 +1277,6 @@ namespace Switcheroo
                 Activate();
                 Keyboard.Focus(tb);
                 Opacity = 1;
-
-                // 窗口可见后 WPF 才完成 DPI 上下文切换（PMv2 下跨屏移动触发 WM_DPICHANGED）。
-                // 隐藏状态下矩阵停留在上次所在屏，位置/宽度会按错误基准换算——这里用实际矩阵重定位一次，
-                // 抄 Flow Launcher InitializePosition 的"调用两次 workaround 多屏对齐"（issue #2910）
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (IsVisible && _currentMonitor != null)
-                    {
-                        CenterWindow(_currentMonitor);
-                    }
-                }), DispatcherPriority.Input);
             }
             else
             {
@@ -1361,16 +1346,6 @@ namespace Switcheroo
                     tb.Text = "按 Alt + S 搜索";
                 }
                 Opacity = 1;
-
-                // 窗口可见后 WPF 才完成 DPI 上下文切换（PMv2 跨屏移动触发 WM_DPICHANGED）。
-                // 隐藏状态下的定位/尺寸基于冻结的旧矩阵，这里用实际矩阵重定位收敛一次
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (IsVisible && _currentMonitor != null)
-                    {
-                        CenterWindow(_currentMonitor);
-                    }
-                }), DispatcherPriority.Input);
                 
                 sw.Stop();
 
