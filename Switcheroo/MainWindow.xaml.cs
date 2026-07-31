@@ -449,14 +449,16 @@ namespace Switcheroo
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 2. Fetch Windows
-            _unfilteredWindowList = new WindowFinder().GetWindows().Select(window =>
-            {
-                var vm = new AppWindowViewModel(window);
-                var rule = _highlightService.FindMatch(vm.ProcessTitle, vm.WindowTitle, window.ClassName);
-                vm.ApplyHighlight(rule, false);
-                return vm;
-            }).ToList();
+            // 2. Fetch Windows (黑名单进程过滤：右键"加入黑名单"的进程不再出现在切换列表)
+            _unfilteredWindowList = new WindowFinder().GetWindows()
+                .Where(w => !IsBlacklisted(w.ProcessTitle))
+                .Select(window =>
+                {
+                    var vm = new AppWindowViewModel(window);
+                    var rule = _highlightService.FindMatch(vm.ProcessTitle, vm.WindowTitle, window.ClassName);
+                    vm.ApplyHighlight(rule, false);
+                    return vm;
+                }).ToList();
 
             long tFetch = sw.ElapsedMilliseconds;
 
@@ -2117,6 +2119,102 @@ namespace Switcheroo
                 // Reload the data to reflect the changes
                 LoadData(InitialFocus.NextItem);
             }
+        }
+
+        /// <summary>
+        /// 右键菜单：将当前窗口的进程加入黑名单（不再出现在切换列表，直至手动移除）。
+        /// </summary>
+        private void ContextMenu_AddToBlacklist(object sender, RoutedEventArgs e)
+        {
+            var menuItem = sender as System.Windows.Controls.MenuItem;
+            if (menuItem?.DataContext is AppWindowViewModel window)
+            {
+                string processTitle = window.ProcessTitle.Trim();
+                if (string.IsNullOrEmpty(processTitle)) return;
+
+                if (Settings.Default.BlacklistedProcesses == null)
+                {
+                    Settings.Default.BlacklistedProcesses = new System.Collections.Specialized.StringCollection();
+                }
+
+                foreach (var item in Settings.Default.BlacklistedProcesses)
+                {
+                    if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) return; // 已在黑名单
+                }
+
+                Settings.Default.BlacklistedProcesses.Add(processTitle);
+                Settings.Default.Save();
+                LoadData(InitialFocus.NextItem);
+            }
+        }
+
+        /// <summary>
+        /// 右键菜单打开时：填充"从黑名单移除"子菜单（列出当前黑名单进程）。
+        /// </summary>
+        private void ListBoxItemContextMenu_Opening(object sender, ContextMenuEventArgs e)
+        {
+            var menu = sender as System.Windows.Controls.ContextMenu;
+            var removeMenu = menu?.FindName("BlacklistRemoveMenu") as System.Windows.Controls.MenuItem;
+            if (removeMenu == null) return;
+
+            removeMenu.Items.Clear();
+            var blacklist = Settings.Default.BlacklistedProcesses;
+            if (blacklist == null || blacklist.Count == 0)
+            {
+                removeMenu.IsEnabled = false;
+                return;
+            }
+
+            removeMenu.IsEnabled = true;
+            foreach (var proc in blacklist)
+            {
+                var item = new System.Windows.Controls.MenuItem
+                {
+                    Header = proc,
+                    Tag = proc,
+                    Foreground = System.Windows.Media.Brushes.Black
+                };
+                item.Click += ContextMenu_RemoveFromBlacklist;
+                removeMenu.Items.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// 从黑名单移除指定进程。
+        /// </summary>
+        private void ContextMenu_RemoveFromBlacklist(object sender, RoutedEventArgs e)
+        {
+            var menuItem = sender as System.Windows.Controls.MenuItem;
+            if (menuItem?.Tag is string processTitle)
+            {
+                var blacklist = Settings.Default.BlacklistedProcesses;
+                if (blacklist != null)
+                {
+                    var toRemove = new List<string>();
+                    foreach (var item in blacklist)
+                    {
+                        if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) toRemove.Add(item);
+                    }
+                    foreach (var item in toRemove) blacklist.Remove(item);
+                    Settings.Default.Save();
+                    LoadData(InitialFocus.NextItem);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 判断进程是否在黑名单中（大小写不敏感）。
+        /// </summary>
+        private static bool IsBlacklisted(string processTitle)
+        {
+            if (string.IsNullOrEmpty(processTitle)) return false;
+            var blacklist = Settings.Default.BlacklistedProcesses;
+            if (blacklist == null || blacklist.Count == 0) return false;
+            foreach (var proc in blacklist)
+            {
+                if (processTitle.Equals(proc, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
 
         private void ContextMenu_CopyWindowTitle(object sender, RoutedEventArgs e)

@@ -197,7 +197,7 @@
                         </Setter>
                     </Style>
 
-                    <ContextMenu x:Key="ListBoxItemContextMenu" KeyDown="ContextMenu_KeyDown" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource ControlBackgroundBrush}">
+                    <ContextMenu x:Key="ListBoxItemContextMenu" KeyDown="ContextMenu_KeyDown" Opening="ListBoxItemContextMenu_Opening" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource ControlBackgroundBrush}">
                         <ContextMenu.Template>
                             <ControlTemplate TargetType="ContextMenu">
                                 <Border Background="{TemplateBinding Background}"
@@ -220,6 +220,9 @@
                                 <TextBlock Text="&#xE718;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
                             </MenuItem.Icon>
                         </MenuItem>
+                        <Separator />
+                        <MenuItem Header="加入黑名单" Click="ContextMenu_AddToBlacklist" ToolTip="不再在切换列表中显示该进程的所有窗口" />
+                        <MenuItem x:Name="BlacklistRemoveMenu" Header="从黑名单移除" />
                         <Separator />
 
                         <!-- Color Row -->
