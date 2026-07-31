@@ -882,8 +882,8 @@ namespace Switcheroo
 
             // 2. Calculate Width
             double calculatedWidth = numVisibleColumns * columnWidthInDips;
-            // 物理像素宽度上限 → 按窗口实际变换矩阵换算为 DIP（跨 DPI 屏幕正确）
-            double maxWidth = TransformPixelsToDIP(monitor.WorkAreaWidth * 0.95, 0).X;
+            // 物理宽度上限 → 目标屏 DIP（物理尺寸 = DIP × DpiScale，由 SetWindowPos 物理落位）
+            double maxWidth = monitor.WpfWorkAreaWidth * 0.95;
             double finalWidth = Math.Min(calculatedWidth, maxWidth);
             
             // Apply Width
@@ -902,8 +902,8 @@ namespace Switcheroo
             long tCalculateAndSetWidth = sw.ElapsedMilliseconds;
 
             // 3. Calculate Height (Manually, to avoid UpdateLayout/Measure)
-            // 物理像素高度上限 → 按窗口实际变换矩阵换算为 DIP
-            double maxHeight = TransformPixelsToDIP(0, monitor.WorkAreaHeight * 0.9).Y;
+            // 物理高度上限 → 目标屏 DIP
+            double maxHeight = monitor.WpfWorkAreaHeight * 0.9;
 
             if (Border.MaxHeight != maxHeight)
                 Border.MaxHeight = maxHeight;
@@ -973,13 +973,15 @@ namespace Switcheroo
             // Clamp Y (ensure it doesn't go above top)
             desiredTopInPixels = Math.Max(monitor.WorkArea.Top, desiredTopInPixels);
 
-            // 用窗口实际变换矩阵把物理像素目标位换算为 DIP。
-            // 注意：不能除以 monitor.DpiScale（目标屏 DPI）——PerMonitorV2 下 WPF 的换算基准
-            // 跟随窗口当前所在屏（由 WM_DPICHANGED 维护），跨 DPI 移动且窗口隐藏时不更新，
-            // 用 monitor.DpiScale 假设会导致 20% 级偏移（主屏 120% / 副屏 100% 场景）
-            var dip = TransformPixelsToDIP(desiredLeftInPixels, desiredTopInPixels);
-            Left = dip.X;
-            Top = dip.Y;
+            // 物理像素全量定位：PMv2 下 SetWindowPos 的位置/尺寸参数即物理像素，
+            // 不经过任何 WPF DIP 换算——无论窗口当前变换矩阵处于哪个屏的 DPI 都精确。
+            // （旧实现设 Left/Top 依赖矩阵换算：窗口隐藏时矩阵停留在上次所在屏不更新，
+            //   跨 DPI 场景产生 20% 级偏移；实测主屏 120%/副屏 100% 时连主屏都不居中）
+            var hwnd = new WindowInteropHelper(this).EnsureHandle();
+            SetWindowPos(hwnd, IntPtr.Zero,
+                (int)desiredLeftInPixels, (int)desiredTopInPixels,
+                (int)actualWidthInPixels, (int)actualHeightInPixels,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_DEFERERASE);
         }
 
         /// <summary>
@@ -1000,30 +1002,6 @@ namespace Switcheroo
                 dpiX = 96;
                 dpiY = 96;
             }
-        }
-
-        /// <summary>
-        /// 物理像素 → DIP（抄 Flow Launcher Win32Helper.TransformPixelsToDIP）：
-        /// 用窗口实际 CompositionTarget 的 TransformFromDevice 反向矩阵换算，
-        /// 保证与 WPF 渲染基准一致，跨 DPI 屏幕定位精确。
-        /// </summary>
-        private Point TransformPixelsToDIP(double unitX, double unitY)
-        {
-            Matrix matrix;
-            var source = PresentationSource.FromVisual(this);
-            if (source != null)
-            {
-                matrix = source.CompositionTarget.TransformFromDevice;
-            }
-            else
-            {
-                // 项目锁定 C# 7.3，不能用 using 声明，用传统 using 块
-                using (var src = new HwndSource(new HwndSourceParameters()))
-                {
-                    matrix = src.CompositionTarget.TransformFromDevice;
-                }
-            }
-            return new Point((int)(matrix.M11 * unitX), (int)(matrix.M22 * unitY));
         }
 
         /// <summary>
