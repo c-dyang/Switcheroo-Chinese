@@ -91,6 +91,9 @@ jobs:
       - name: Build changelog
         shell: pwsh
         run: |
+          # Actions 的 pwsh 默认 $ErrorActionPreference=stop，外部命令非 0 退出会终止脚本 → 显式关掉
+          $ErrorActionPreference = "Continue"
+          $PSNativeCommandUseErrorActionPreference = $false
           if ("${{ github.ref }}" -match "^refs/tags/") {
             $range = "${{ github.ref_name }}.."
             $title = "Release ${{ github.ref_name }}"
@@ -99,7 +102,7 @@ jobs:
             $title = "Draft Build ${{ env.VERSION }}"
           }
           $log = (git log --oneline --no-merges $range 2>$null) -join "`n"
-          if ([string]::IsNullOrWhiteSpace($log)) { $log = "No new commits since ${{ env.LAST_TAG }}." }
+          if ([string]::IsNullOrWhiteSpace($log) -or $LASTEXITCODE -ne 0) { $log = "No new commits since ${{ env.LAST_TAG }}." }
           $body = "## $title`n`n$log"
           "CHANGELOG_BODY<<EOF" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           $body | Out-File $env:GITHUB_ENV -Append -Encoding utf8
