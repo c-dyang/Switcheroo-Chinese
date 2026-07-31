@@ -50,10 +50,10 @@
   </Target>
   
   <Target Name="ZipPortable">
-  	<CreateItem Include="ProgramFiles\*.*" >
-      <Output ItemName="ZipFiles" TaskParameter="Include"/>
-    </CreateItem>
-    <Zip ZipFileName="Output\switcheroo-portable.zip" Flatten="true" Files="@(ZipFiles)" />
+    <MakeDir Directories="Output" ContinueOnError="true" />
+    <!-- 弃用 MSBuild.Community.Tasks <Zip>（CRC 对 512KB 整文件记录错误，实测 Typography.OpenFont.dll 损坏）
+         改用 .NET 自带 ZipFile.CreateFromDirectory（内容平铺到 zip 根，与旧 Flatten=true 一致） -->
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory('ProgramFiles','Output\switcheroo-portable.zip');&quot;" />
   </Target>
 
   <Target Name="BuildWindowSpawnerUtil">
