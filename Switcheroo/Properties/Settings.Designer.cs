@@ -207,6 +207,32 @@ namespace Switcheroo.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("<?xml version=\"1.0\" encoding=\"utf-16\"?>\r\n<ArrayOfString xmlns:xsi=\"http://www.w3." +
+            "org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n  " +
+            "<string>AIMP</string>\r\n</ArrayOfString>")]
+        public global::System.Collections.Specialized.StringCollection PassThroughProcesses {
+            get {
+                return ((global::System.Collections.Specialized.StringCollection)(this["PassThroughProcesses"]));
+            }
+            set {
+                this["PassThroughProcesses"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool DiagLogEnabled {
+            get {
+                return ((bool)(this["DiagLogEnabled"]));
+            }
+            set {
+                this["DiagLogEnabled"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("3")]
         public int NumberOfAppColumns {
             get {

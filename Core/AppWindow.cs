@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Switcheroo - The incremental-search task switcher for Windows.
  * https://github.com/coezbek/switcheroo
  * Copyright 2009, 2010 James Sulak
@@ -152,6 +152,7 @@ namespace Switcheroo.Core
         /// </summary>
         public void SwitchTo()
         {
+            DiagLog.Info("SwitchTo -> " + Describe());
             // This function is deprecated, so should probably be replaced.
             WinApi.SwitchToThisWindow(HWnd, true);
         }
@@ -159,7 +160,22 @@ namespace Switcheroo.Core
         public void SwitchToLastVisibleActivePopup()
         {
             var lastActiveVisiblePopup = GetLastActiveVisiblePopup();
+            DiagLog.Info("SwitchToPopup -> " + Describe()
+                         + " | popup=0x" + lastActiveVisiblePopup.ToInt64().ToString("X"));
             WinApi.SwitchToThisWindow(lastActiveVisiblePopup, true);
+        }
+
+        private string Describe()
+        {
+            string cls = "?";
+            string title = "?";
+            int pid = 0;
+            try { cls = ClassName; } catch { }
+            try { title = Title; } catch { }
+            try { pid = ProcessId; } catch { }
+            if (title != null && title.Length > 60) title = title.Substring(0, 60);
+            return "hwnd=0x" + HWnd.ToInt64().ToString("X") + " pid=" + pid
+                   + " class=" + cls + " title=\"" + title + "\"";
         }
 
         public new static IEnumerable<AppWindow> AllToplevelWindows

@@ -310,6 +310,12 @@ namespace Switcheroo
             blacklistMenuItem.MenuItems.Add(new MenuItem("…") { Enabled = false });
             blacklistMenuItem.Popup += BlacklistMenuItem_Popup;
 
+            // 让路名单：这些进程在前台时 Alt+Tab 交回系统切换器（避免抢前台让它们误弹窗/卡死）。
+            // 典型示例 = AIMP：迷你播放模块在前台时，被抢前台 100% 弹「关于」。
+            var passThroughMenuItem = new MenuItem("让路名单(&P)");
+            passThroughMenuItem.MenuItems.Add(new MenuItem("…") { Enabled = false });
+            passThroughMenuItem.Popup += PassThroughMenuItem_Popup;
+
             _notifyIcon = new NotifyIcon
             {
                 Text = "Switcheroo",
@@ -320,6 +326,7 @@ namespace Switcheroo
                     new MenuItem("选项(&O)", (s, e) => Options()),
                     runOnStartupMenuItem,
                     blacklistMenuItem,
+                    passThroughMenuItem,
                     new MenuItem("关于(&A)", (s, e) => About()),
                     new MenuItem("退出(&X)", (s, e) => Quit())
                 })
@@ -368,8 +375,48 @@ namespace Switcheroo
             }
         }
 
-        private void SetUpToastNotifications()
+        /// <summary>
+        /// 托盘"让路名单"子菜单展开时：列出当前名单进程，点击即移除。
+        /// </summary>
+        private void PassThroughMenuItem_Popup(object sender, EventArgs e)
         {
+            var menu = sender as MenuItem;
+            if (menu == null) return;
+            menu.MenuItems.Clear();
+
+            var list = Settings.Default.PassThroughProcesses;
+            if (list == null || list.Count == 0)
+            {
+                menu.MenuItems.Add(new MenuItem("（无让路进程）") { Enabled = false });
+                return;
+            }
+
+            foreach (var proc in list)
+            {
+                string processTitle = proc;
+                menu.MenuItems.Add(new MenuItem("移除 " + processTitle, (s, e2) => RemoveFromPassThrough(processTitle)));
+            }
+        }
+
+        /// <summary>
+        /// 从"让路名单"移除指定进程（托盘菜单与右键菜单共用）。
+        /// </summary>
+        private void RemoveFromPassThrough(string processTitle)
+        {
+            var list = Settings.Default.PassThroughProcesses;
+            if (list != null)
+            {
+                var toRemove = new List<string>();
+                foreach (var item in list)
+                {
+                    if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) toRemove.Add(item);
+                }
+                foreach (var item in toRemove) list.Remove(item);
+                Settings.Default.Save();
+            }
+        }
+
+        private void SetUpToastNotifications()        {
             // Register the app for toast notifications with a unique AUMID
             ToastNotificationManagerCompat.OnActivated += toastArgs =>
             {
@@ -518,6 +565,22 @@ namespace Switcheroo
                 }).ToList();
 
             long tFetch = sw.ElapsedMilliseconds;
+
+            // 诊断：把过滤后的列表与被读取的黑名单一起记下来 —— 排查"某进程为何还在列表里"时这是唯一判据
+            try
+            {
+                var blk = Settings.Default.BlacklistedProcesses;
+                var sb = new System.Text.StringBuilder();
+                foreach (var vm in _unfilteredWindowList.Take(20))
+                {
+                    sb.Append(vm.ProcessTitle).Append('|').Append(vm.WindowTitle).Append(" ; ");
+                }
+                Switcheroo.Core.DiagLog.Info(
+                    "LoadData: kept=" + _unfilteredWindowList.Count
+                    + " blacklist=[" + (blk == null ? "null" : string.Join(",", blk.Cast<string>().ToArray())) + "]"
+                    + " list=" + sb.ToString());
+            }
+            catch { }
 
             // The foreground window stays at the top (Index 0)
             var firstWindow = _unfilteredWindowList.FirstOrDefault();
@@ -1366,6 +1429,11 @@ namespace Switcheroo
 
             e.Handled = true;
 
+            Switcheroo.Core.DiagLog.Info(
+                "AltTabPressed: shift=" + e.ShiftDown + " ctrl=" + e.CtrlDown
+                + " visible=" + (Visibility == Visibility.Visible)
+                + " autoSwitch=" + Settings.Default.AutoSwitch);
+
             if (Visibility != Visibility.Visible)
             {
                 // [PROFILE] Start
@@ -2175,6 +2243,40 @@ namespace Switcheroo
 
                 // Reload the data to reflect the changes
                 LoadData(InitialFocus.NextItem);
+            }
+        }
+
+        /// <summary>
+        /// 右键菜单：把当前窗口的进程加入"让路名单"——该进程在前台时不再接管 Alt+Tab，
+        /// 交回系统切换器。用于那种"被抢前台就会误弹窗/卡死"的程序（示例：AIMP 迷你播放模块）。
+        /// </summary>
+        private void ContextMenu_AddToPassThrough(object sender, RoutedEventArgs e)
+        {
+            var menuItem = sender as System.Windows.Controls.MenuItem;
+            if (menuItem?.DataContext is AppWindowViewModel window)
+            {
+                string processTitle = window.ProcessTitle.Trim();
+                if (string.IsNullOrEmpty(processTitle)) return;
+
+                if (Settings.Default.PassThroughProcesses == null)
+                {
+                    Settings.Default.PassThroughProcesses = new System.Collections.Specialized.StringCollection();
+                }
+
+                foreach (var item in Settings.Default.PassThroughProcesses)
+                {
+                    if (item.Equals(processTitle, StringComparison.OrdinalIgnoreCase)) return; // 已在名单
+                }
+
+                Settings.Default.PassThroughProcesses.Add(processTitle);
+                Settings.Default.Save();
+
+                try
+                {
+                    _notifyIcon.ShowBalloonTip(1500, "已加入让路名单",
+                        processTitle + " 在前台时 Alt+Tab 将交回系统切换器", System.Windows.Forms.ToolTipIcon.None);
+                }
+                catch { }
             }
         }
 
