@@ -19,7 +19,7 @@
  */
 
 using System;
-using System.Windows;
+using System.Collections.Generic;
 using System.Windows.Forms;
 using ManagedWinapi;
 using ManagedWinapi.Hooks;
@@ -38,12 +38,16 @@ namespace Switcheroo
     public class AltTabHook : IDisposable
     {
         public event AltTabHookEventHandler Pressed;
-        private const int AltKey = 32;
+
         private const int CtrlKey = 11;
+        private const int VK_ALT = 0x12;
+        private const int VK_LMENU = 0xA4;
+        private const int VK_RMENU = 0xA5;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
+
         private readonly KeyboardKey _leftShiftKey = new KeyboardKey(Keys.LShiftKey);
         private readonly KeyboardKey _rightShiftKey = new KeyboardKey(Keys.RShiftKey);
         private readonly KeyboardKey _ctrlKey = new KeyboardKey(Keys.LControlKey);
@@ -51,6 +55,11 @@ namespace Switcheroo
 
         // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
         private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
+
+        // 内存环形缓冲：钩子里绝不能做文件 IO（会拖慢回调 → 触发 LowLevelHooksTimeout）
+        private readonly List<string> _trace = new List<string>(64);
+        // 本次 Alt+Tab 手势里还需要吞掉随后的 Alt 抬起（否则贴边类应用会把"Alt 单击"当成自己的快捷键）
+        private bool _pendingAltUp;
 
         public AltTabHook()
         {
@@ -60,64 +69,79 @@ namespace Switcheroo
         }
 
         /// <summary>
-        /// WH_KEYBOARD_LL 回调：**必须在 LowLevelHooksTimeout（默认 300ms）内返回**，否则系统会
-        /// 静默旁路本钩子，后续按键直接漏给前台程序（表现为"别的程序收到了不属于它的键"）。
-        /// ⇒ 这里只做廉价判定 + 立刻吞键，真正的窗口枚举与 UI 全部丢给 UI 线程异步执行。
+        /// WH_KEYBOARD_LL 回调：必须在 LowLevelHooksTimeout（默认 300ms）内返回 —— 只做廉价判定，
+        /// 重活全部 BeginInvoke 到 UI 线程；文件日志写到内存环形缓冲，由 Tab/Alt 事件触发时才落盘。
         /// </summary>
         private void OnMessageIntercepted(LowLevelMessage lowLevelMessage, ref bool handled)
         {
             var keyboardMessage = lowLevelMessage as LowLevelKeyboardMessage;
-            if (handled || keyboardMessage == null)
+            if (keyboardMessage == null)
             {
                 return;
             }
 
-            if (keyboardMessage.VirtualKeyCode != (int) Keys.Tab)
+            var vk = keyboardMessage.VirtualKeyCode;
+            var msg = keyboardMessage.Message;
+            var isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            var isUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+
+            // ---- Alt 键：本次手势里随后的抬起必须吞掉 ----
+            if (vk == VK_ALT || vk == VK_LMENU || vk == VK_RMENU)
+            {
+                if (isUp && _pendingAltUp)
+                {
+                    handled = true;
+                    _pendingAltUp = false;
+                    Trace(vk, msg, true, "swallow-alt-up");
+                    FlushTrace("Alt up swallowed (gesture completed)");
+                }
+                return;
+            }
+
+            if (vk != (int) Keys.Tab)
             {
                 return;
             }
 
-            // 廉价判定：Alt 必须按下（GetAsyncKeyState，无阻塞）
-            if (!IsKeyDown(_altKey))
+            if (handled)
             {
                 return;
             }
 
-            // 钩子被用户在选项里关掉时完全不要介入，避免把 Alt+Tab 吃掉
+            var altDown = IsKeyDown(_altKey);
+            if (!altDown)
+            {
+                return;
+            }
+
             bool hookEnabled;
-            try { hookEnabled = Switcheroo.Properties.Settings.Default.AltTabHook; } catch { hookEnabled = false; }
+            try { hookEnabled = Switcheroo.Properties.Settings.Default.AltTabHook; }
+            catch { hookEnabled = false; }
             if (!hookEnabled)
             {
                 return;
             }
 
-            var isDown = keyboardMessage.Message == WM_KEYDOWN || keyboardMessage.Message == WM_SYSKEYDOWN;
-            var isUp = keyboardMessage.Message == WM_KEYUP || keyboardMessage.Message == WM_SYSKEYUP;
-
-            // Tab 按下与抬起都当场吞掉：漏给前台程序的 Tab 会被当成"应用自己的按键"
+            // Tab 按下与抬起都吞；按下时同时标记"随后的 Alt 抬起也要吞"
             handled = true;
+            Trace(vk, msg, true, isDown ? "swallow-tab-down" : "swallow-tab-up");
 
             if (!isDown)
             {
                 return;
             }
 
+            _pendingAltUp = true;
+            FlushTrace("Alt+Tab intercepted");
+
             var shiftDown = IsKeyDown(_leftShiftKey) || IsKeyDown(_rightShiftKey);
             var ctrlDown = IsKeyDown(_ctrlKey);
             var args = new AltTabHookEventArgs {ShiftDown = shiftDown, CtrlDown = ctrlDown};
 
-            try
-            {
-                Switcheroo.Core.DiagLog.Info("Hook: Alt+Tab intercepted (shift=" + shiftDown + " ctrl=" + ctrlDown + ")");
-            }
-            catch
-            {
-            }
-
-            // 重活（窗口枚举 / 布局 / 图标）交给 UI 线程排队，钩子回调立即返回
             var dispatcher = System.Windows.Application.Current == null
                 ? null
                 : System.Windows.Application.Current.Dispatcher;
+
             if (dispatcher == null)
             {
                 OnPressed(args);
@@ -126,10 +150,7 @@ namespace Switcheroo
 
             dispatcher.BeginInvoke(new Action(() =>
             {
-                try
-                {
-                    OnPressed(args);
-                }
+                try { OnPressed(args); }
                 catch (Exception ex)
                 {
                     try { Switcheroo.Core.DiagLog.Error("AltTabHook handler failed", ex); } catch { }
@@ -150,6 +171,32 @@ namespace Switcheroo
                 handler(this, args);
             }
             return args;
+        }
+
+        private void Trace(int vk, int msg, bool swallowed, string note)
+        {
+            if (_trace.Count >= 64)
+            {
+                _trace.RemoveRange(0, 32);
+            }
+            _trace.Add("vk=0x" + vk.ToString("X2") + " msg=0x" + msg.ToString("X") + (swallowed ? " SWALLOWED" : "") + " " + note);
+        }
+
+        /// <summary>把环形缓冲落盘（只在 Tab / Alt 结束时调用，不在普通键路径上做 IO）。</summary>
+        private void FlushTrace(string headline)
+        {
+            try
+            {
+                if (_trace.Count == 0)
+                {
+                    return;
+                }
+                Switcheroo.Core.DiagLog.Info("Hook: " + headline + " | trace: " + string.Join(" -> ", _trace.ToArray()));
+                _trace.Clear();
+            }
+            catch
+            {
+            }
         }
 
         public void Dispose()
