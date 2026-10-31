@@ -519,6 +519,22 @@ namespace Switcheroo
 
             long tFetch = sw.ElapsedMilliseconds;
 
+            // 诊断：把过滤后的列表与被读取的黑名单一起记下来 —— 排查"某进程为何还在列表里"时这是唯一判据
+            try
+            {
+                var blk = Settings.Default.BlacklistedProcesses;
+                var sb = new System.Text.StringBuilder();
+                foreach (var vm in _unfilteredWindowList.Take(20))
+                {
+                    sb.Append(vm.ProcessTitle).Append('|').Append(vm.WindowTitle).Append(" ; ");
+                }
+                Switcheroo.Core.DiagLog.Info(
+                    "LoadData: kept=" + _unfilteredWindowList.Count
+                    + " blacklist=[" + (blk == null ? "null" : string.Join(",", blk.Cast<string>().ToArray())) + "]"
+                    + " list=" + sb.ToString());
+            }
+            catch { }
+
             // The foreground window stays at the top (Index 0)
             var firstWindow = _unfilteredWindowList.FirstOrDefault();
 
@@ -1365,6 +1381,11 @@ namespace Switcheroo
             }
 
             e.Handled = true;
+
+            Switcheroo.Core.DiagLog.Info(
+                "AltTabPressed: shift=" + e.ShiftDown + " ctrl=" + e.CtrlDown
+                + " visible=" + (Visibility == Visibility.Visible)
+                + " autoSwitch=" + Settings.Default.AutoSwitch);
 
             if (Visibility != Visibility.Visible)
             {
