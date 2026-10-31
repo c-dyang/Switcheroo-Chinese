@@ -20,6 +20,43 @@ namespace Switcheroo
 
         public AppWindow AppWindow { get; private set; }
 
+        // ---- 同程序多窗口分组（GroupByProcessEnabled）：一个条目代表一组窗口，Alt+Tab 在组内循环 ----
+
+        private List<AppWindow> _groupMembers;
+
+        /// <summary>该条目代表的窗口数（未分组时为 1）。</summary>
+        public int GroupTotal
+        {
+            get { return _groupMembers == null ? 1 : _groupMembers.Count; }
+        }
+
+        /// <summary>角标文本：>1 显示 ×N，否则空串。</summary>
+        public string GroupBadgeText
+        {
+            get { return GroupTotal > 1 ? " ×" + GroupTotal : string.Empty; }
+        }
+
+        public void SetGroupMembers(List<AppWindow> members)
+        {
+            _groupMembers = members != null && members.Count > 1 ? members : null;
+        }
+
+        /// <summary>轮换到同组的下一个窗口；返回 false 表示该条目只有自己。</summary>
+        public bool RotateToNextGroupMember()
+        {
+            if (_groupMembers == null || _groupMembers.Count < 2) return false;
+            int idx = _groupMembers.IndexOf(AppWindow);
+            var next = _groupMembers[(idx + 1 + _groupMembers.Count) % _groupMembers.Count];
+            if (next == null || next.HWnd == AppWindow.HWnd) return false;
+
+            AppWindow = next;
+            NotifyOfPropertyChange(() => WindowTitle);
+            NotifyOfPropertyChange(() => ProcessTitle);
+            NotifyOfPropertyChange(() => HWnd);
+            NotifyOfPropertyChange(() => FormattedTitle);
+            return true;
+        }
+
         #region IWindowText Members
 
         public string WindowTitle
@@ -54,25 +91,6 @@ namespace Switcheroo
         public IntPtr HWnd
         {
             get { return AppWindow.HWnd; }
-        }
-
-        /// <summary>
-        /// 窗口缩略图（悬停时按需抓取，见 ThumbnailProvider）。开关关闭或抓不到时为 null。
-        /// </summary>
-        public System.Windows.Media.Imaging.BitmapSource Thumbnail
-        {
-            get
-            {
-                try
-                {
-                    if (!Switcheroo.Properties.Settings.Default.ThumbnailPreviewEnabled) return null;
-                    return Switcheroo.Preview.ThumbnailProvider.Get(HWnd);
-                }
-                catch
-                {
-                    return null;
-                }
-            }
         }
 
         private string _formattedTitle;

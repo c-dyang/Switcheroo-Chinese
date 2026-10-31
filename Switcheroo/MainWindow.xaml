@@ -5,6 +5,7 @@
         xmlns:system="clr-namespace:System;assembly=mscorlib"
         xmlns:core="clr-namespace:Switcheroo;assembly=Switcheroo.Core"
         xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
+        xmlns:preview="clr-namespace:Switcheroo.Preview"
         Closing="OnClose" ShowInTaskbar="False" WindowStyle="None" AllowsTransparency="True"
         SizeToContent="Manual"
         Title="" MinWidth="750" Deactivated="MainWindow_OnLostFocus" Loaded="MainWindow_OnLoaded"
@@ -304,7 +305,7 @@
                         <Setter Property="ToolTip">
                             <Setter.Value>
                                 <ToolTip>
-                                    <Image Source="{Binding Thumbnail}" MaxWidth="360" MaxHeight="240" Stretch="Uniform" />
+                                    <preview:DwmPreview SourceHwnd="{Binding HWnd}" Width="320" Height="200" />
                                 </ToolTip>
                             </Setter.Value>
                         </Setter>

@@ -614,16 +614,41 @@ namespace Switcheroo
                 catch { }
             }
 
-            // 同程序多窗口折叠（GroupByProcessEnabled）：同一进程只留最近使用的一个窗口
+            // 同程序多窗口分组（GroupByProcessEnabled）：一个条目代表该进程的全部窗口，
+            // Alt+Tab 再按一次就在组内轮换（而不是把窗口全部平铺出来）。
+            var groupedVms = new List<AppWindowViewModel>();
             if (Settings.Default.GroupByProcessEnabled && _unfilteredWindowList.Count > 1)
             {
                 try
                 {
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var collapsed = new List<AppWindowViewModel>();
+                    var groups = new Dictionary<string, List<AppWindowViewModel>>(StringComparer.OrdinalIgnoreCase);
+                    var order = new List<string>();
                     foreach (var vm in _unfilteredWindowList)
                     {
-                        if (seen.Add(vm.ProcessTitle ?? string.Empty)) collapsed.Add(vm);
+                        var key = vm.ProcessTitle ?? string.Empty;
+                        List<AppWindowViewModel> g;
+                        if (!groups.TryGetValue(key, out g))
+                        {
+                            g = new List<AppWindowViewModel>();
+                            groups[key] = g;
+                            order.Add(key);
+                        }
+                        g.Add(vm);
+                    }
+
+                    var collapsed = new List<AppWindowViewModel>();
+                    foreach (var key in order)
+                    {
+                        var g = groups[key];
+                        var rep = g[0];
+                        if (g.Count > 1)
+                        {
+                            var members = new List<AppWindow>();
+                            foreach (var m in g) members.Add(m.AppWindow);
+                            rep.SetGroupMembers(members);
+                            groupedVms.Add(rep);
+                        }
+                        collapsed.Add(rep);
                     }
                     if (collapsed.Count > 0) _unfilteredWindowList = collapsed;
                 }
@@ -656,6 +681,19 @@ namespace Switcheroo
             var firstWindow = _unfilteredWindowList.FirstOrDefault();
 
             TitleFormatter.FormatTitlesForDisplay(_unfilteredWindowList);
+
+            // 分组角标：×N 直接拼进显示标题，避免改 XAML 模板
+            if (groupedVms.Count > 0)
+            {
+                try
+                {
+                    foreach (var vm in groupedVms)
+                    {
+                        vm.FormattedTitle = vm.FormattedTitle + vm.GroupBadgeText;
+                    }
+                }
+                catch { }
+            }
 
             long tFormat = sw.ElapsedMilliseconds;
 
@@ -2287,6 +2325,8 @@ namespace Switcheroo
                 return;
             }
 
+            if (TryCycleGroupInPlace()) return;
+
             var currentListBox = _visibleListBoxes[_activeColumnIndex];
             if (currentListBox.Items.Count > 0)
             {
@@ -2308,6 +2348,49 @@ namespace Switcheroo
             e.Handled = true;
         }
 
+        private string _cycleGroupProcess;
+        private DateTime _cycleAt = DateTime.MinValue;
+
+        /// <summary>
+        /// 分组轮换：当上一次按键已经停在某个分组条目上（2 秒内、无搜索词），
+        /// 再按 Tab 不再移动选择，而是把该条目轮换到组内下一个窗口。
+        /// </summary>
+        private bool TryCycleGroupInPlace()
+        {
+            try
+            {
+                if (!Settings.Default.GroupByProcessEnabled) return false;
+                if (tb != null && !string.IsNullOrEmpty(tb.Text)) return false;
+                if (_visibleListBoxes.Count == 0 || _activeColumnIndex < 0 || _activeColumnIndex >= _visibleListBoxes.Count) return false;
+
+                var lb = _visibleListBoxes[_activeColumnIndex];
+                var vm = lb.SelectedItem as AppWindowViewModel;
+                if (vm == null || vm.GroupTotal < 2)
+                {
+                    _cycleGroupProcess = null;
+                    return false;
+                }
+
+                bool sameGroup = string.Equals(_cycleGroupProcess, vm.ProcessTitle, StringComparison.OrdinalIgnoreCase)
+                                 && (DateTime.UtcNow - _cycleAt).TotalSeconds <= 2;
+                if (!sameGroup)
+                {
+                    _cycleGroupProcess = vm.ProcessTitle;
+                    _cycleAt = DateTime.UtcNow;
+                    return false;
+                }
+
+                if (!vm.RotateToNextGroupMember()) return false;
+                _cycleAt = DateTime.UtcNow;
+                ScrollSelectedItemIntoView();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private void NextItem()
         {
             // Add this guard clause to prevent out-of-range exceptions.
@@ -2315,6 +2398,8 @@ namespace Switcheroo
             {
                 return;
             }
+
+            if (TryCycleGroupInPlace()) return;
 
             var currentListBox = _visibleListBoxes[_activeColumnIndex];
             if (currentListBox.Items.Count > 0)
