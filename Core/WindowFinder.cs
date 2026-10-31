@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Switcheroo - The incremental-search task switcher for Windows.
  * https://github.com/coezbek/switcheroo
  * Copyright 2009, 2010 James Sulak
@@ -20,16 +20,61 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace Switcheroo.Core
 {
     public class WindowFinder
     {
+        // shell / 桌面合成类窗口：它们不是"应用窗口"，列进切换器并被激活，
+        // 等于直接去碰 explorer 的 XAML/COM 侧（Win11 的任务栏与桌面都是 XAML 岛）。
+        internal static readonly string[] ShellWindowClasses =
+        {
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+            "Progman",
+            "WorkerW",
+            "ApplicationManager_DesktopShellWindow",
+            "Windows.UI.Core.CoreWindow",
+            "MultitaskingViewFrame",
+            "XamlExplorerHostIslandWindow"
+        };
+
         public List<AppWindow> GetWindows()
         {
-            return AppWindow.AllToplevelWindows
-                .Where(a => a.IsAltTabWindow())
-                .ToList();
+            var all = AppWindow.AllToplevelWindows.ToList();
+            var kept = new List<AppWindow>(all.Count);
+            var excluded = new StringBuilder();
+
+            foreach (var w in all)
+            {
+                string cls = null;
+                try { cls = w.ClassName; } catch { }
+
+                if (cls != null && ShellWindowClasses.Contains(cls))
+                {
+                    if (excluded.Length < 800)
+                    {
+                        excluded.Append(cls).Append('#').Append(w.ProcessId).Append(' ');
+                    }
+                    continue;
+                }
+
+                bool isTabWindow;
+                try { isTabWindow = w.IsAltTabWindow(); } catch { isTabWindow = false; }
+                if (isTabWindow)
+                {
+                    kept.Add(w);
+                }
+            }
+
+            if (excluded.Length > 0)
+            {
+                DiagLog.Info("WindowFinder: excluded shell windows -> " + excluded.ToString().TrimEnd());
+            }
+            DiagLog.Info("WindowFinder: toplevel=" + all.Count + " kept=" + kept.Count);
+
+            return kept;
         }
     }
 }

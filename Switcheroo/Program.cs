@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Switcheroo - The incremental-search task switcher for Windows.
  * https://github.com/coezbek/switcheroo
  * Copyright 2009, 2010 James Sulak
@@ -67,6 +67,11 @@ namespace Switcheroo
         [STAThread]
         private static void Main()
         {
+            Switcheroo.Core.DiagLog.Init();
+            AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
+            {
+                Switcheroo.Core.DiagLog.Error("AppDomain.UnhandledException", e.ExceptionObject as Exception);
+            };
 #if CONSOLE_DEBUG
             // Attach to the parent console (your WSL terminal)
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -114,6 +119,11 @@ namespace Switcheroo
                     SetCurrentProcessExplicitAppUserModelID(AppId);
 
                     var app = new App();
+                    app.DispatcherUnhandledException += delegate(object s,
+                        System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+                    {
+                        Switcheroo.Core.DiagLog.Error("DispatcherUnhandledException", e.Exception);
+                    };
                     var mainWindow = new MainWindow();
 
 #if CONSOLE_DEBUG
