@@ -123,6 +123,7 @@ namespace Switcheroo
             foreach (var listBox in _listBoxes)
             {
                 listBox.ContextMenuOpening += ListBox_ContextMenuOpening;
+                listBox.SelectionChanged += delegate { UpdatePreviewForSelection(); };
             }
 
             ListBoxLeft1.ItemsSource = _listLeft1;
@@ -650,7 +651,12 @@ namespace Switcheroo
                         }
                         collapsed.Add(rep);
                     }
-                    if (collapsed.Count > 0) _unfilteredWindowList = collapsed;
+                    if (collapsed.Count > 0)
+                    {
+                        Switcheroo.Core.DiagLog.Info("GroupByProcess: " + _unfilteredWindowList.Count + " -> " + collapsed.Count
+                                                     + " 条目，分组数=" + groupedVms.Count);
+                        _unfilteredWindowList = collapsed;
+                    }
                 }
                 catch { }
             }
@@ -1356,6 +1362,72 @@ namespace Switcheroo
             catch { }
         }
 
+        #region 缩略图预览窗口（独立非分层窗口，DWM 缩略图只能在这种窗口上合成）
+
+        private Switcheroo.Preview.PreviewWindow _previewWindow;
+
+        /// <summary>按当前选中项刷新缩略图预览窗口。开关关闭或无选中项时隐藏。</summary>
+        private void UpdatePreviewForSelection()
+        {
+            try
+            {
+                if (!Settings.Default.ThumbnailPreviewEnabled)
+                {
+                    HidePreviewWindow();
+                    return;
+                }
+                if (_visibleListBoxes.Count == 0 || _activeColumnIndex < 0 ||
+                    _activeColumnIndex >= _visibleListBoxes.Count)
+                {
+                    HidePreviewWindow();
+                    return;
+                }
+
+                var vm = _visibleListBoxes[_activeColumnIndex].SelectedItem as AppWindowViewModel;
+                if (vm == null || vm.HWnd == IntPtr.Zero)
+                {
+                    HidePreviewWindow();
+                    return;
+                }
+
+                if (_previewWindow == null)
+                {
+                    _previewWindow = new Switcheroo.Preview.PreviewWindow();
+                }
+
+                const double w = 360;
+                const double h = 220;
+                var wa = SystemParameters.WorkArea;
+                double left = Left + ActualWidth + 8;
+                if (left + w > wa.Right) left = Left - w - 8;
+                if (left < wa.Left) left = wa.Left;
+                double top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - h));
+
+                _previewWindow.ShowFor(vm.HWnd, left, top, w, h);
+                try
+                {
+                    Switcheroo.Core.DiagLog.Info("Preview show: hwnd=0x" + vm.HWnd.ToInt64().ToString("X")
+                                                 + " at " + (int) left + "," + (int) top);
+                }
+                catch { }
+            }
+            catch (Exception ex)
+            {
+                try { Switcheroo.Core.DiagLog.Error("UpdatePreviewForSelection", ex); } catch { }
+            }
+        }
+
+        private void HidePreviewWindow()
+        {
+            try
+            {
+                if (_previewWindow != null) _previewWindow.HidePreview();
+            }
+            catch { }
+        }
+
+        #endregion
+
         #region 前台进程 / IPC / 配置导入导出
 
         [DllImport("user32.dll")]
@@ -1540,6 +1612,8 @@ namespace Switcheroo
 
         private void HideWindow()
         {
+            HidePreviewWindow();
+
             if (_windowCloser != null)
             {
                 _windowCloser.Dispose();
@@ -2382,6 +2456,12 @@ namespace Switcheroo
 
                 if (!vm.RotateToNextGroupMember()) return false;
                 _cycleAt = DateTime.UtcNow;
+                try
+                {
+                    Switcheroo.Core.DiagLog.Info("GroupCycle: " + vm.ProcessTitle + " -> hwnd=0x"
+                                                 + vm.HWnd.ToInt64().ToString("X") + " title=" + vm.WindowTitle);
+                }
+                catch { }
                 ScrollSelectedItemIntoView();
                 return true;
             }

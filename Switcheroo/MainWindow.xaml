@@ -302,13 +302,6 @@
                         <Setter Property="BorderBrush" Value="Transparent"/>
 
                         <Setter Property="ContextMenu" Value="{StaticResource ListBoxItemContextMenu}" />
-                        <Setter Property="ToolTip">
-                            <Setter.Value>
-                                <ToolTip>
-                                    <preview:DwmPreview SourceHwnd="{Binding HWnd}" Width="320" Height="200" />
-                                </ToolTip>
-                            </Setter.Value>
-                        </Setter>
                         <EventSetter Event="MouseDoubleClick" Handler="ListBoxItem_MouseDoubleClick" />
                         <EventSetter Event="PreviewMouseLeftButtonUp" Handler="ListBoxItem_PreviewMouseLeftButtonUp" />
                         <EventSetter Event="PreviewMouseDown" Handler="ListBoxItem_PreviewMouseDown" />
