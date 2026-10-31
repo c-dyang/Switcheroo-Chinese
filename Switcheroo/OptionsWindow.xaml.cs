@@ -87,6 +87,7 @@ namespace Switcheroo
             UsageRankingCheckBox.IsChecked = Settings.Default.UsageRankingEnabled;
             ThumbnailPreviewCheckBox.IsChecked = Settings.Default.ThumbnailPreviewEnabled;
             GroupByProcessCheckBox.IsChecked = Settings.Default.GroupByProcessEnabled;
+            GroupCycleCheckBox.IsChecked = Settings.Default.GroupCycleEnabled;
             ConfigExportCheckBox.IsChecked = Settings.Default.ConfigExportEnabled;
             CommandLineCheckBox.IsChecked = Settings.Default.CommandLineEnabled;
             NumberOfAppColumnsComboBox.SelectedIndex = Settings.Default.NumberOfAppColumns;
@@ -186,6 +187,7 @@ namespace Switcheroo
             Settings.Default.UsageRankingEnabled = UsageRankingCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.ThumbnailPreviewEnabled = ThumbnailPreviewCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.GroupByProcessEnabled = GroupByProcessCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.GroupCycleEnabled = GroupCycleCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.ConfigExportEnabled = ConfigExportCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.CommandLineEnabled = CommandLineCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.NumberOfAppColumns = NumberOfAppColumnsComboBox.SelectedIndex;

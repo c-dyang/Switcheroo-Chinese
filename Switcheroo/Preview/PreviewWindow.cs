@@ -1,31 +1,35 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Switcheroo.Preview
 {
     /// <summary>
-    /// 缩略图预览窗口：把目标窗口的 DWM 缩略图**直接注册到本窗口自己的 HWND** 上。
+    /// 缩略图预览窗口。
     ///
-    /// 为什么不用 HwndHost 子窗口（实测无效、且无异常）：
-    /// DWM 缩略图只会合成到**顶层窗口的 surface** 上；用一个 CreateWindowEx 出来的
-    /// WS_CHILD 子窗口做 destination，结果就是"什么都不显示"。
-    /// 开源参考：miguelo96/WindowScatter 的 ThumbnailManager、dremin/RetroBar 的 TaskThumbnail
-    /// —— 两者都用"宿主窗口句柄 + 物理像素 rcDestination + 布局变化时重刷"。
-    ///
-    /// 另外两个必须照抄的点：
-    /// 1) rcDestination 用**物理像素**（WPF 的 ActualWidth 是 DIP，要乘 DPI 缩放）；
-    /// 2) 内容区必须保持透明/不绘制，否则 WPF 的画面会把缩略图盖住。
+    /// 设计要点（均为实测/开源实现验证过的）：
+    /// 1) DWM 缩略图必须注册到**本窗口自己的顶层 HWND**（HwndHost 子窗口不合成）；
+    /// 2) rcDestination 用**物理像素**，窗口定位走 SetWindowPos（WPF 的 Left/Top 是 DIP，跨屏会漂）；
+    /// 3) 等比“铺满并裁切”（cover），不留黑边；
+    /// 4) **最小化窗口**没有可渲染的客户区 ⇒ 用 SnapshotCache 里的最后一帧兜底；
+    /// 5) 分组时把组内多个窗口铺成网格（DWM 支持多个 thumbnail 注册到同一 destination）。
     /// </summary>
     public class PreviewWindow : Window
     {
         private const int DWM_TNP_RECTDESTINATION = 0x1;
+        private const int DWM_TNP_RECTSOURCE = 0x2;
         private const int DWM_TNP_OPACITY = 0x4;
         private const int DWM_TNP_VISIBLE = 0x8;
         private const int DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
+
+        private const int SWP_NOACTIVATE = 0x0010;
+        private const int SWP_SHOWWINDOW = 0x0040;
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT
@@ -65,8 +69,12 @@ namespace Switcheroo.Preview
         [DllImport("user32.dll")]
         private static extern bool IsIconic(IntPtr hwnd);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+        private readonly Canvas _canvas;
+        private readonly List<IntPtr> _thumbs = new List<IntPtr>();
         private IntPtr _hwnd = IntPtr.Zero;
-        private IntPtr _thumb = IntPtr.Zero;
 
         public PreviewWindow()
         {
@@ -76,50 +84,45 @@ namespace Switcheroo.Preview
             ShowActivated = false;
             Topmost = true;
             AllowsTransparency = false;   // 分层窗口上 DWM 不合成缩略图
-            Background = Brushes.Black;   // 没有缩略图时的底色
-            Width = 360;
-            Height = 220;
+            Background = Brushes.Black;
             WindowStartupLocation = WindowStartupLocation.Manual;
+            UseLayoutRounding = true;
 
-            // 内容必须完全透明，缩略图才不会被 WPF 画面盖住
-            Content = new Grid { Background = Brushes.Transparent, IsHitTestVisible = false };
+            _canvas = new Canvas { Background = Brushes.Transparent, IsHitTestVisible = false };
+            Content = _canvas;
         }
 
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
-            try
-            {
-                _hwnd = new WindowInteropHelper(this).Handle;
-                Switcheroo.Core.DiagLog.Info("Preview: window hwnd=0x" + _hwnd.ToInt64().ToString("X"));
-            }
-            catch
-            {
-            }
+            try { _hwnd = new WindowInteropHelper(this).Handle; }
+            catch { }
         }
 
-        protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
-        {
-            base.OnRenderSizeChanged(sizeInfo);
-            ApplyThumbnail();
-        }
-
-        /// <summary>在指定位置显示某个窗口的实时缩略图。</summary>
-        public void ShowFor(IntPtr sourceHwnd, double left, double top, double width, double height)
+        /// <summary>显示一组窗口的预览（1 个 = 单图，多个 = 网格）。位置与尺寸均为**物理像素**。</summary>
+        public void ShowPreview(IntPtr[] sources, int leftPx, int topPx, int widthPx, int heightPx)
         {
             try
             {
-                Width = Math.Max(160, width);
-                Height = Math.Max(100, height);
-                Left = left;
-                Top = top;
-                if (!IsVisible) Show();
-                if (_hwnd == IntPtr.Zero) _hwnd = new WindowInteropHelper(this).Handle;
-                Register(sourceHwnd);
+                if (sources == null || sources.Length == 0)
+                {
+                    HidePreview();
+                    return;
+                }
+                if (_hwnd == IntPtr.Zero)
+                {
+                    Show();
+                    _hwnd = new WindowInteropHelper(this).Handle;
+                }
+
+                SetWindowPos(_hwnd, HWND_TOPMOST, leftPx, topPx,
+                    Math.Max(80, widthPx), Math.Max(60, heightPx), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                BuildCells(sources, Math.Max(80, widthPx), Math.Max(60, heightPx));
             }
             catch (Exception ex)
             {
-                try { Switcheroo.Core.DiagLog.Error("Preview.ShowFor", ex); } catch { }
+                try { Switcheroo.Core.DiagLog.Error("Preview.ShowPreview", ex); } catch { }
             }
         }
 
@@ -127,7 +130,8 @@ namespace Switcheroo.Preview
         {
             try
             {
-                Unregister();
+                ReleaseThumbs();
+                _canvas.Children.Clear();
                 if (IsVisible) Hide();
             }
             catch
@@ -135,100 +139,139 @@ namespace Switcheroo.Preview
             }
         }
 
-        private void Unregister()
+        private void ReleaseThumbs()
+        {
+            foreach (var t in _thumbs)
+            {
+                try { DwmUnregisterThumbnail(t); } catch { }
+            }
+            _thumbs.Clear();
+        }
+
+        private double DpiScale()
         {
             try
             {
-                if (_thumb != IntPtr.Zero) DwmUnregisterThumbnail(_thumb);
+                var dpi = VisualTreeHelper.GetDpi(this);
+                return dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
             }
             catch
             {
-            }
-            _thumb = IntPtr.Zero;
-        }
-
-        private void Register(IntPtr sourceHwnd)
-        {
-            Unregister();
-            try
-            {
-                if (_hwnd == IntPtr.Zero || sourceHwnd == IntPtr.Zero || sourceHwnd == _hwnd) return;
-                if (IsIconic(sourceHwnd))
-                {
-                    Switcheroo.Core.DiagLog.Info("Preview: source minimized, skip 0x" + sourceHwnd.ToInt64().ToString("X"));
-                    return;
-                }
-
-                IntPtr thumb;
-                int hr = DwmRegisterThumbnail(_hwnd, sourceHwnd, out thumb);
-                if (hr != 0 || thumb == IntPtr.Zero)
-                {
-                    Switcheroo.Core.DiagLog.Info("Preview: DwmRegisterThumbnail failed hr=0x" + hr.ToString("X8")
-                                                 + " src=0x" + sourceHwnd.ToInt64().ToString("X"));
-                    return;
-                }
-                _thumb = thumb;
-                ApplyThumbnail();
-            }
-            catch (Exception ex)
-            {
-                try { Switcheroo.Core.DiagLog.Error("Preview.Register", ex); } catch { }
+                return 1.0;
             }
         }
 
-        private void ApplyThumbnail()
+        private void BuildCells(IntPtr[] sources, int wpx, int hpx)
         {
-            if (_thumb == IntPtr.Zero) return;
+            ReleaseThumbs();
+            _canvas.Children.Clear();
+
+            int n = sources.Length;
+            if (n > 6) n = 6;
+
+            int cols = n <= 1 ? 1 : n <= 2 ? 2 : n <= 4 ? 2 : 3;
+            int rows = (n + cols - 1) / cols;
+            const int Gap = 2;
+
+            double scale = DpiScale();
+
+            for (int i = 0; i < n; i++)
+            {
+                int cx = i % cols;
+                int cy = i / cols;
+                int cellW = (wpx - Gap * (cols - 1)) / cols;
+                int cellH = (hpx - Gap * (rows - 1)) / rows;
+                if (cellW <= 4 || cellH <= 4) continue;
+
+                int left = cx * (cellW + Gap);
+                int top = cy * (cellH + Gap);
+                var src = sources[i];
+
+                bool shown = false;
+                if (src != IntPtr.Zero && !IsIconic(src))
+                {
+                    IntPtr thumb;
+                    if (DwmRegisterThumbnail(_hwnd, src, out thumb) == 0 && thumb != IntPtr.Zero)
+                    {
+                        _thumbs.Add(thumb);
+                        ApplyCell(thumb, left, top, cellW, cellH);
+                        shown = true;
+                    }
+                }
+
+                if (!shown)
+                {
+                    // 最小化（或注册失败）⇒ 用切换前的最后一帧快照兜底
+                    var snap = SnapshotCache.TryGet(src);
+                    if (snap != null)
+                    {
+                        var img = new Image
+                        {
+                            Source = snap,
+                            Stretch = Stretch.UniformToFill,
+                            Width = cellW / scale,
+                            Height = cellH / scale
+                        };
+                        Canvas.SetLeft(img, left / scale);
+                        Canvas.SetTop(img, top / scale);
+                        _canvas.Children.Add(img);
+                    }
+                }
+            }
+        }
+
+        /// <summary>把缩略图铺满整格并裁切（cover），避免出现黑边。</summary>
+        private void ApplyCell(IntPtr thumb, int left, int top, int w, int h)
+        {
             try
             {
-                // WPF 尺寸是 DIP，rcDestination 要物理像素
-                double scale = 1.0;
-                try
-                {
-                    var dpi = VisualTreeHelper.GetDpi(this);
-                    scale = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
-                }
-                catch { }
-
-                int wpx = Math.Max(1, (int) (ActualWidth * scale));
-                int hpx = Math.Max(1, (int) (ActualHeight * scale));
-
-                // 按源窗口比例做等比缩放并居中（避免拉伸变形）
                 PSIZE src;
-                int left = 0, top = 0, right = wpx, bottom = hpx;
-                if (DwmQueryThumbnailSourceSize(_thumb, out src) == 0 && src.x > 0 && src.y > 0)
+                var rcSource = new RECT();
+                int flags = DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_VISIBLE | DWM_TNP_SOURCECLIENTAREAONLY;
+
+                if (DwmQueryThumbnailSourceSize(thumb, out src) == 0 && src.x > 0 && src.y > 0)
                 {
-                    double dstRatio = (double) wpx / hpx;
                     double srcRatio = (double) src.x / src.y;
+                    double dstRatio = (double) w / h;
                     if (srcRatio > dstRatio)
                     {
-                        int h = (int) (wpx / srcRatio);
-                        top = (hpx - h) / 2;
-                        bottom = top + h;
+                        int cropW = (int) Math.Round(src.y * dstRatio);
+                        if (cropW < 1) cropW = 1;
+                        int x = (src.x - cropW) / 2;
+                        rcSource = new RECT { Left = x, Top = 0, Right = x + cropW, Bottom = src.y };
                     }
                     else if (srcRatio < dstRatio)
                     {
-                        int w = (int) (hpx * srcRatio);
-                        left = (wpx - w) / 2;
-                        right = left + w;
+                        int cropH = (int) Math.Round(src.x / dstRatio);
+                        if (cropH < 1) cropH = 1;
+                        int y = (src.y - cropH) / 2;
+                        rcSource = new RECT { Left = 0, Top = y, Right = src.x, Bottom = y + cropH };
                     }
+                    else
+                    {
+                        rcSource = new RECT { Left = 0, Top = 0, Right = src.x, Bottom = src.y };
+                    }
+                    flags |= DWM_TNP_RECTSOURCE;
                 }
 
                 var props = new DWM_THUMBNAIL_PROPERTIES
                 {
-                    dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_VISIBLE | DWM_TNP_SOURCECLIENTAREAONLY,
-                    rcDestination = new RECT { Left = left, Top = top, Right = right, Bottom = bottom },
+                    dwFlags = flags,
+                    rcDestination = new RECT { Left = left, Top = top, Right = left + w, Bottom = top + h },
+                    rcSource = rcSource,
                     opacity = 255,
                     fVisible = true,
                     fSourceClientAreaOnly = true
                 };
-                int hr = DwmUpdateThumbnailProperties(_thumb, ref props);
-                Switcheroo.Core.DiagLog.Info("Preview: applied dest=" + wpx + "x" + hpx
-                                             + " (dpi=" + scale.ToString("F2") + ") hr=0x" + hr.ToString("X8"));
+                int hr = DwmUpdateThumbnailProperties(thumb, ref props);
+                if (hr != 0)
+                {
+                    Switcheroo.Core.DiagLog.Info("Preview: update failed hr=0x" + hr.ToString("X8"));
+                }
             }
             catch (Exception ex)
             {
-                try { Switcheroo.Core.DiagLog.Error("Preview.ApplyThumbnail", ex); } catch { }
+                try { Switcheroo.Core.DiagLog.Error("Preview.ApplyCell", ex); } catch { }
             }
         }
     }

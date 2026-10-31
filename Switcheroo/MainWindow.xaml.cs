@@ -1267,6 +1267,9 @@ namespace Switcheroo
                 try
                 {
                     switchedFromProcess = GetForegroundProcessTitle();
+                    // 切走前给"即将离开的窗口"存一张快照：它最小化后 DWM 无帧，预览用这张兜底
+                    var fgHwnd = GetForegroundWindow();
+                    if (fgHwnd != IntPtr.Zero) Switcheroo.Preview.SnapshotCache.Capture(fgHwnd);
                 }
                 catch { }
 
@@ -1396,21 +1399,48 @@ namespace Switcheroo
                     _previewWindow = new Switcheroo.Preview.PreviewWindow();
                 }
 
-                const double w = 360;
-                const double h = 220;
-                var wa = SystemParameters.WorkArea;
-                double left = Left + ActualWidth + 8;
-                if (left + w > wa.Right) left = Left - w - 8;
-                if (left < wa.Left) left = wa.Left;
-                double top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - h));
-
-                _previewWindow.ShowFor(vm.HWnd, left, top, w, h);
+                // 物理像素坐标：以切换器所在显示器的工作区为准（SystemParameters.WorkArea 只代表主屏）
+                double scale = 1.0;
                 try
                 {
-                    Switcheroo.Core.DiagLog.Info("Preview show: hwnd=0x" + vm.HWnd.ToInt64().ToString("X")
-                                                 + " at " + (int) left + "," + (int) top);
+                    var ps = PresentationSource.FromVisual(this);
+                    if (ps != null) scale = ps.CompositionTarget.TransformToDevice.M11;
                 }
                 catch { }
+
+                int wpx = Math.Max(160, (int) (360 * scale));
+                int hpx = Math.Max(100, (int) (220 * scale));
+
+                int switcherLeftPx = (int) (Left * scale);
+                int switcherTopPx = (int) (Top * scale);
+                int switcherRightPx = (int) ((Left + ActualWidth) * scale);
+
+                int waLeft = 0, waTop = 0, waRight = 0, waBottom = 0;
+                var monitor = _currentMonitor ?? MonitorHelper.GetMonitorFromCursor();
+                if (monitor != null && monitor.WorkArea != null)
+                {
+                    waLeft = monitor.WorkArea.Left;
+                    waTop = monitor.WorkArea.Top;
+                    waRight = monitor.WorkArea.Right;
+                    waBottom = monitor.WorkArea.Bottom;
+                }
+                else
+                {
+                    var wa = SystemParameters.WorkArea;
+                    waLeft = (int) (wa.Left * scale);
+                    waTop = (int) (wa.Top * scale);
+                    waRight = (int) (wa.Right * scale);
+                    waBottom = (int) (wa.Bottom * scale);
+                }
+
+                int left = switcherRightPx + (int) (8 * scale);
+                if (left + wpx > waRight) left = switcherLeftPx - wpx - (int) (8 * scale);
+                if (left < waLeft) left = waLeft;
+                int top = switcherTopPx;
+                if (top + hpx > waBottom) top = waBottom - hpx;
+                if (top < waTop) top = waTop;
+
+                _previewWindow.ShowPreview(vm.GetGroupHwnds().ToArray(), left, top, wpx, hpx);
             }
             catch (Exception ex)
             {
@@ -1704,6 +1734,16 @@ namespace Switcheroo
         {
             // The actual key pressed, ignoring modifiers. This is important for system keys like Alt+Left.
             var key = (e.Key == Key.System) ? e.SystemKey : e.Key;
+
+            // Ctrl + Tab：显式在"同程序分组"内部轮换窗口（GroupCycleEnabled 打开时才生效）
+            if (key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Control && Settings.Default.GroupCycleEnabled)
+            {
+                if (TryCycleGroupInPlace(true))
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
 
             // Toggle Anonymization with Alt + P
             if (key == Key.P && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
@@ -2432,11 +2472,12 @@ namespace Switcheroo
         /// 分组轮换（Windows 原生语义）：快速连按 Tab 是"移出该组"，只有在某个分组条目上**停留**
         /// （或刚刚轮换过）再按 Tab 才在组内换窗口。
         /// </summary>
-        private bool TryCycleGroupInPlace()
+        private bool TryCycleGroupInPlace(bool force = false)
         {
             try
             {
                 if (!Settings.Default.GroupByProcessEnabled) return false;
+                if (!Settings.Default.GroupCycleEnabled) return false;
                 if (tb != null && !string.IsNullOrEmpty(tb.Text)) return false;
                 if (_visibleListBoxes.Count == 0 || _activeColumnIndex < 0 || _activeColumnIndex >= _visibleListBoxes.Count) return false;
 
@@ -2448,13 +2489,16 @@ namespace Switcheroo
                     return false;
                 }
 
-                bool justCycled = ReferenceEquals(vm, _lastCycleVm);
-                bool dwelled = (DateTime.UtcNow - _selectionChangedAt).TotalSeconds >= 0.6;
-
-                if (!justCycled && !dwelled)
+                if (!force)
                 {
-                    _lastCycleVm = vm;
-                    return false; // 快速连按 → 正常移动
+                    bool justCycled = ReferenceEquals(vm, _lastCycleVm);
+                    bool dwelled = (DateTime.UtcNow - _selectionChangedAt).TotalSeconds >= 0.6;
+
+                    if (!justCycled && !dwelled)
+                    {
+                        _lastCycleVm = vm;
+                        return false; // 快速连按 → 正常移动
+                    }
                 }
 
                 if (!vm.RotateToNextGroupMember())

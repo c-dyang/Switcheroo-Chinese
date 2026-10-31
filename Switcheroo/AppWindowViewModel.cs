@@ -41,6 +41,21 @@ namespace Switcheroo
             _groupMembers = members != null && members.Count > 1 ? members : null;
         }
 
+        /// <summary>该条目要预览的窗口句柄列表：分组时是全部成员，未分组时只有自己。</summary>
+        public List<IntPtr> GetGroupHwnds()
+        {
+            var list = new List<IntPtr>();
+            if (_groupMembers != null)
+            {
+                foreach (var w in _groupMembers)
+                {
+                    if (w != null && w.HWnd != IntPtr.Zero) list.Add(w.HWnd);
+                }
+            }
+            if (list.Count == 0) list.Add(HWnd);
+            return list;
+        }
+
         /// <summary>轮换到同组的下一个窗口；返回 false 表示该条目只有自己。</summary>
         public bool RotateToNextGroupMember()
         {
