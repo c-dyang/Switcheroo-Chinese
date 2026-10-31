@@ -91,6 +91,9 @@ namespace Switcheroo
             "TAIMPTrayControl",
             "TAIMPMainForm"
         };
+
+        // 需要"成对吞掉 Alt"的前台窗口类；当前为空（AIMP 走 PassThrough 让路，无需抑制 Alt）
+        private static readonly string[] AltReactiveForegroundClasses = new string[0];
         private bool _altDownSuppressed;
         // 钩子自己维护的 Alt 状态：一旦某次 Alt 被吞，GetAsyncKeyState 不再可靠
         private bool _altIsDown;
