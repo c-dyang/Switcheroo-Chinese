@@ -20,6 +20,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using ManagedWinapi;
 using ManagedWinapi.Hooks;
@@ -40,9 +42,6 @@ namespace Switcheroo
         public event AltTabHookEventHandler Pressed;
 
         private const int CtrlKey = 11;
-        private const int VK_ALT = 0x12;
-        private const int VK_LMENU = 0xA4;
-        private const int VK_RMENU = 0xA5;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
@@ -53,13 +52,17 @@ namespace Switcheroo
         private readonly KeyboardKey _ctrlKey = new KeyboardKey(Keys.LControlKey);
         private readonly KeyboardKey _altKey = new KeyboardKey(Keys.LMenu);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
         // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
         private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
 
-        // 内存环形缓冲：钩子里绝不能做文件 IO（会拖慢回调 → 触发 LowLevelHooksTimeout）
-        private readonly List<string> _trace = new List<string>(64);
-        // 本次 Alt+Tab 手势里还需要吞掉随后的 Alt 抬起（否则贴边类应用会把"Alt 单击"当成自己的快捷键）
-        private bool _pendingAltUp;
+        // 内存环形缓冲：钩子回调里绝不做文件 IO（IO 会拖慢回调 → 触发 LowLevelHooksTimeout）
+        private readonly List<string> _trace = new List<string>(96);
 
         public AltTabHook()
         {
@@ -69,8 +72,9 @@ namespace Switcheroo
         }
 
         /// <summary>
-        /// WH_KEYBOARD_LL 回调：必须在 LowLevelHooksTimeout（默认 300ms）内返回 —— 只做廉价判定，
-        /// 重活全部 BeginInvoke 到 UI 线程；文件日志写到内存环形缓冲，由 Tab/Alt 事件触发时才落盘。
+        /// WH_KEYBOARD_LL 回调。硬约束：必须在 LowLevelHooksTimeout（默认 300ms）内返回。
+        /// 本版只做两件事：① 吞掉 Alt+Tab 的 Tab（按下+抬起）② 把所有键事件记进内存环形缓冲。
+        /// **不碰 Alt 键** —— 吞掉 Alt 抬起会让系统认为 Alt 一直被按住，后续按键全被当成 Alt 组合。
         /// </summary>
         private void OnMessageIntercepted(LowLevelMessage lowLevelMessage, ref bool handled)
         {
@@ -83,18 +87,12 @@ namespace Switcheroo
             var vk = keyboardMessage.VirtualKeyCode;
             var msg = keyboardMessage.Message;
             var isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-            var isUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
-            // ---- Alt 键：本次手势里随后的抬起必须吞掉 ----
-            if (vk == VK_ALT || vk == VK_LMENU || vk == VK_RMENU)
+            // 全键记录（内存，无 IO）：漏给前台的键在 trace 里没有 SWALLOWED 标记
+            Trace(vk, msg, false, "pass");
+
+            if (handled)
             {
-                if (isUp && _pendingAltUp)
-                {
-                    handled = true;
-                    _pendingAltUp = false;
-                    Trace(vk, msg, true, "swallow-alt-up");
-                    FlushTrace("Alt up swallowed (gesture completed)");
-                }
                 return;
             }
 
@@ -103,13 +101,7 @@ namespace Switcheroo
                 return;
             }
 
-            if (handled)
-            {
-                return;
-            }
-
-            var altDown = IsKeyDown(_altKey);
-            if (!altDown)
+            if (!IsKeyDown(_altKey))
             {
                 return;
             }
@@ -122,17 +114,16 @@ namespace Switcheroo
                 return;
             }
 
-            // Tab 按下与抬起都吞；按下时同时标记"随后的 Alt 抬起也要吞"
+            // 只吞 Tab（按下与抬起都吞）；Alt 原样放过，避免"Alt 卡住"
             handled = true;
-            Trace(vk, msg, true, isDown ? "swallow-tab-down" : "swallow-tab-up");
+            MarkLastSwallowed();
 
             if (!isDown)
             {
                 return;
             }
 
-            _pendingAltUp = true;
-            FlushTrace("Alt+Tab intercepted");
+            FlushTrace("Alt+Tab intercepted, fg=" + ForegroundClass());
 
             var shiftDown = IsKeyDown(_leftShiftKey) || IsKeyDown(_rightShiftKey);
             var ctrlDown = IsKeyDown(_ctrlKey);
@@ -173,16 +164,41 @@ namespace Switcheroo
             return args;
         }
 
-        private void Trace(int vk, int msg, bool swallowed, string note)
+        private static string ForegroundClass()
         {
-            if (_trace.Count >= 64)
+            try
             {
-                _trace.RemoveRange(0, 32);
+                var h = GetForegroundWindow();
+                var sb = new StringBuilder(256);
+                GetClassName(h, sb, 256);
+                return "0x" + h.ToInt64().ToString("X") + ":" + sb;
             }
-            _trace.Add("vk=0x" + vk.ToString("X2") + " msg=0x" + msg.ToString("X") + (swallowed ? " SWALLOWED" : "") + " " + note);
+            catch
+            {
+                return "?";
+            }
         }
 
-        /// <summary>把环形缓冲落盘（只在 Tab / Alt 结束时调用，不在普通键路径上做 IO）。</summary>
+        private void Trace(int vk, int msg, bool swallowed, string note)
+        {
+            if (_trace.Count >= 96)
+            {
+                _trace.RemoveRange(0, 48);
+            }
+            _trace.Add("0x" + vk.ToString("X2") + "/m" + msg.ToString("X")
+                       + (swallowed ? "*SW" : "") + " " + note);
+        }
+
+        private void MarkLastSwallowed()
+        {
+            if (_trace.Count == 0)
+            {
+                return;
+            }
+            _trace[_trace.Count - 1] = _trace[_trace.Count - 1] + "*SW";
+        }
+
+        /// <summary>把环形缓冲落盘（只在 Alt+Tab 命中时调用，不在普通键路径上做 IO）。</summary>
         private void FlushTrace(string headline)
         {
             try
