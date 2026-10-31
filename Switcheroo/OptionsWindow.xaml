@@ -75,6 +75,16 @@
                 检测到按键漏给前台程序时自动重装低级键盘钩子。<LineBreak />
                 <Italic>* 需要重启 Switcheroo</Italic>
             </TextBlock>
+            <CheckBox x:Name="PassThroughSuggestCheckBox" Margin="5,5,5,1" Content="让路建议（切走后被抢回前台时提示加入让路名单）"/>
+            <CheckBox x:Name="UsageRankingCheckBox" Margin="5,5,5,1" Content="按最近使用排序切换列表"/>
+            <CheckBox x:Name="ThumbnailPreviewCheckBox" Margin="5,5,5,1" Content="悬停显示窗口缩略图"/>
+            <CheckBox x:Name="GroupByProcessCheckBox" Margin="5,5,5,1" Content="同程序多窗口折叠（只显示最近使用的一个）"/>
+            <CheckBox x:Name="ConfigExportCheckBox" Margin="5,5,5,1" Content="托盘提供配置导出/导入（JSON）"/>
+            <CheckBox x:Name="CommandLineCheckBox" Margin="5,5,5,1" Content="命令行接口（--show / --switch）*"/>
+            <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
+                switcheroo.exe --switch "微信" 可直接切换；供 Quicker / AHK / 脚本调用。<LineBreak />
+                <Italic>* 需要重启 Switcheroo</Italic>
+            </TextBlock>
             <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">常用进程显示的列数：</TextBlock>
             <ComboBox Name="NumberOfAppColumnsComboBox" Margin="25,5,0,10" Width="150" HorizontalAlignment="Left">
                 <ComboBoxItem Content="0" Tag="0"/>

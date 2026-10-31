@@ -134,6 +134,8 @@ namespace Switcheroo
             SetUpKeyBindings();
 
             SetUpNotifyIcon();
+            StartCommandServer();
+            try { Switcheroo.Usage.UsageTracker.EnsureLoaded(); } catch { }
 
             SetUpHotKey();
 
@@ -316,6 +318,12 @@ namespace Switcheroo
             passThroughMenuItem.MenuItems.Add(new MenuItem("…") { Enabled = false });
             passThroughMenuItem.Popup += PassThroughMenuItem_Popup;
 
+            // 配置导出/导入（ConfigExportEnabled 开关）
+            bool cfgIo = true;
+            try { cfgIo = Settings.Default.ConfigExportEnabled; } catch { }
+            var exportConfigMenuItem = new MenuItem("导出配置(&E)…", (s, e) => ExportConfig()) { Enabled = cfgIo };
+            var importConfigMenuItem = new MenuItem("导入配置(&I)…", (s, e) => ImportConfig()) { Enabled = cfgIo };
+
             _notifyIcon = new NotifyIcon
             {
                 Text = "Switcheroo",
@@ -327,6 +335,8 @@ namespace Switcheroo
                     runOnStartupMenuItem,
                     blacklistMenuItem,
                     passThroughMenuItem,
+                    exportConfigMenuItem,
+                    importConfigMenuItem,
                     new MenuItem("关于(&A)", (s, e) => About()),
                     new MenuItem("退出(&X)", (s, e) => Quit())
                 })
@@ -600,6 +610,44 @@ namespace Switcheroo
                         foreach (var p in rulePinned) _unfilteredWindowList.Remove(p);
                         _unfilteredWindowList.InsertRange(1, rulePinned);
                     }
+                }
+                catch { }
+            }
+
+            // 同程序多窗口折叠（GroupByProcessEnabled）：同一进程只留最近使用的一个窗口
+            if (Settings.Default.GroupByProcessEnabled && _unfilteredWindowList.Count > 1)
+            {
+                try
+                {
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var collapsed = new List<AppWindowViewModel>();
+                    foreach (var vm in _unfilteredWindowList)
+                    {
+                        if (seen.Add(vm.ProcessTitle ?? string.Empty)) collapsed.Add(vm);
+                    }
+                    if (collapsed.Count > 0) _unfilteredWindowList = collapsed;
+                }
+                catch { }
+            }
+
+            // 使用频次排序（UsageRankingEnabled）：前台窗口固定第 0 位，其余按"最近使用 → 次数"排
+            if (Settings.Default.UsageRankingEnabled && _unfilteredWindowList.Count > 2)
+            {
+                try
+                {
+                    var head = _unfilteredWindowList[0];
+                    var tail = _unfilteredWindowList.Skip(1).ToList();
+                    tail.Sort((a, b) =>
+                    {
+                        long ta = Switcheroo.Usage.UsageTracker.GetLastTicks(a.ProcessTitle);
+                        long tb2 = Switcheroo.Usage.UsageTracker.GetLastTicks(b.ProcessTitle);
+                        if (ta != tb2) return tb2.CompareTo(ta);
+                        int ca = Switcheroo.Usage.UsageTracker.GetCount(a.ProcessTitle);
+                        int cb = Switcheroo.Usage.UsageTracker.GetCount(b.ProcessTitle);
+                        return cb.CompareTo(ca);
+                    });
+                    _unfilteredWindowList = new List<AppWindowViewModel> { head };
+                    _unfilteredWindowList.AddRange(tail);
                 }
                 catch { }
             }
@@ -1171,15 +1219,286 @@ namespace Switcheroo
             var currentListBox = _visibleListBoxes[_activeColumnIndex];
             if (currentListBox.SelectedItems.Count > 0)
             {
+                string switchedFromProcess = null;
+                try
+                {
+                    switchedFromProcess = GetForegroundProcessTitle();
+                }
+                catch { }
+
                 foreach (var item in currentListBox.SelectedItems)
                 {
                     var win = (AppWindowViewModel)item;
+                    try { Switcheroo.Usage.UsageTracker.Record(win.ProcessTitle); } catch { }
                     win.AppWindow.SwitchToLastVisibleActivePopup();
+                }
+
+                // 让路建议：切走后短时间观察"上一个程序是否把前台抢回去了"
+                if (!string.IsNullOrEmpty(switchedFromProcess))
+                {
+                    SchedulePassThroughSuggest(switchedFromProcess);
                 }
             }
 
             HideWindow();
         }
+
+        private DispatcherTimer _passThroughSuggestTimer;
+        private string _passThroughSuggestProcess;
+
+        /// <summary>
+        /// 切走某个程序后延迟 1.2 秒检查：如果前台又回到该程序（或被它新建的窗口占据），
+        /// 说明它对"被抢前台"敏感，弹一条气泡建议把它加入让路名单。只在开关打开时生效。
+        /// </summary>
+        private void SchedulePassThroughSuggest(string processTitle)
+        {
+            try
+            {
+                if (!Settings.Default.PassThroughSuggestEnabled) return;
+                if (string.IsNullOrEmpty(processTitle)) return;
+
+                var list = Settings.Default.PassThroughProcesses;
+                if (list != null)
+                {
+                    foreach (var p in list)
+                    {
+                        if (string.Equals(p, processTitle, StringComparison.OrdinalIgnoreCase)) return;
+                    }
+                }
+
+                _passThroughSuggestProcess = processTitle;
+                if (_passThroughSuggestTimer == null)
+                {
+                    _passThroughSuggestTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+                    _passThroughSuggestTimer.Tick += PassThroughSuggestTimer_Tick;
+                }
+                _passThroughSuggestTimer.Stop();
+                _passThroughSuggestTimer.Start();
+            }
+            catch { }
+        }
+
+        private void PassThroughSuggestTimer_Tick(object sender, EventArgs e)
+        {
+            try
+            {
+                _passThroughSuggestTimer.Stop();
+                var target = _passThroughSuggestProcess;
+                if (string.IsNullOrEmpty(target)) return;
+
+                var fgProcess = GetForegroundProcessTitle();
+                if (!string.Equals(fgProcess, target, StringComparison.OrdinalIgnoreCase)) return;
+
+                _passThroughSuggestProcess = null;
+                if (_notifyIcon == null) return;
+                _notifyIcon.BalloonTipTitle = "建议加入让路名单";
+                _notifyIcon.BalloonTipText = target + " 抢回了前台，可能对 Alt+Tab 敏感（示例：AIMP 迷你播放模块）。点此加入让路名单。";
+                _notifyIcon.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Info;
+                _notifyIcon.BalloonTipClicked += PassThroughSuggestBalloon_Click;
+                _notifyIcon.ShowBalloonTip(4000);
+            }
+            catch { }
+        }
+
+        private void PassThroughSuggestBalloon_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (_notifyIcon != null) _notifyIcon.BalloonTipClicked -= PassThroughSuggestBalloon_Click;
+                var target = _passThroughSuggestProcess;
+                if (string.IsNullOrEmpty(target)) return;
+                if (Settings.Default.PassThroughProcesses == null)
+                {
+                    Settings.Default.PassThroughProcesses = new System.Collections.Specialized.StringCollection();
+                }
+                Settings.Default.PassThroughProcesses.Add(target);
+                Settings.Default.Save();
+                _passThroughSuggestProcess = null;
+            }
+            catch { }
+        }
+
+        #region 前台进程 / IPC / 配置导入导出
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+        /// <summary>当前前台窗口所属进程名（不带扩展名），失败返回 null。</summary>
+        private static string GetForegroundProcessTitle()
+        {
+            try
+            {
+                var h = GetForegroundWindow();
+                if (h == IntPtr.Zero) return null;
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                if (pid == 0) return null;
+                return System.Diagnostics.Process.GetProcessById((int) pid).ProcessName;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private Switcheroo.Ipc.CommandServer _commandServer;
+
+        /// <summary>启动命名管道命令服务：支持 switcheroo.exe --show/--switch。</summary>
+        private void StartCommandServer()
+        {
+            try
+            {
+                if (!Settings.Default.CommandLineEnabled) return;
+                _commandServer = new Switcheroo.Ipc.CommandServer(
+                    cmd => Dispatcher.BeginInvoke(new Action(() => HandleIpcCommand(cmd))));
+            }
+            catch { }
+        }
+
+        private void HandleIpcCommand(string command)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(command)) return;
+                int sep = command.IndexOf('|');
+                var verb = sep < 0 ? command : command.Substring(0, sep);
+                var arg = sep < 0 ? string.Empty : command.Substring(sep + 1);
+
+                if (Visibility != Visibility.Visible)
+                {
+                    var monitor = MonitorHelper.GetMonitorFromCursor();
+                    LoadData(InitialFocus.NextItem, monitor);
+                    ActivateAndFocusMainWindow();
+                    Keyboard.Focus(tb);
+                    Opacity = 1;
+                }
+
+                tb.Text = arg;
+                if (string.Equals(verb, "switch", StringComparison.OrdinalIgnoreCase))
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try { Switch(); } catch { }
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>导出全部设置到 JSON（默认文件名带日期）。</summary>
+        private void ExportConfig()
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "Switcheroo 配置 (*.json)|*.json",
+                    FileName = "switcheroo-config-" + DateTime.Now.ToString("yyyyMMdd") + ".json"
+                };
+                if (dlg.ShowDialog() != true) return;
+
+                var dict = new Dictionary<string, object>();
+                foreach (System.Configuration.SettingsProperty p in Settings.Default.Properties)
+                {
+                    var v = Settings.Default[p.Name];
+                    var sc = v as System.Collections.Specialized.StringCollection;
+                    dict[p.Name] = sc != null ? (object) string.Join("\u0001", ToArray(sc)) : v;
+                }
+                var json = SimpleJson.Serialize(dict);
+                System.IO.File.WriteAllText(dlg.FileName, json, new UTF8Encoding(true));
+                ShowBalloon("配置已导出", dlg.FileName);
+            }
+            catch (Exception ex)
+            {
+                ShowBalloon("导出失败", ex.Message);
+            }
+        }
+
+        private static string[] ToArray(System.Collections.Specialized.StringCollection sc)
+        {
+            var arr = new string[sc.Count];
+            sc.CopyTo(arr, 0);
+            return arr;
+        }
+
+        /// <summary>从 JSON 导入设置（未知键忽略，类型不匹配跳过）。</summary>
+        private void ImportConfig()
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Switcheroo 配置 (*.json)|*.json" };
+                if (dlg.ShowDialog() != true) return;
+
+                var json = System.IO.File.ReadAllText(dlg.FileName, Encoding.UTF8);
+                var dict = SimpleJson.DeserializeObject(json);
+                int applied = 0;
+                foreach (System.Configuration.SettingsProperty p in Settings.Default.Properties)
+                {
+                    object raw;
+                    if (!dict.TryGetValue(p.Name, out raw) || raw == null) continue;
+                    try
+                    {
+                        if (p.PropertyType == typeof (bool))
+                        {
+                            bool b;
+                            if (bool.TryParse(raw.ToString(), out b)) { Settings.Default[p.Name] = b; applied++; }
+                        }
+                        else if (p.PropertyType == typeof (int))
+                        {
+                            int i;
+                            if (int.TryParse(raw.ToString(), out i)) { Settings.Default[p.Name] = i; applied++; }
+                        }
+                        else if (p.PropertyType == typeof (double))
+                        {
+                            double d;
+                            if (double.TryParse(raw.ToString(), out d)) { Settings.Default[p.Name] = d; applied++; }
+                        }
+                        else if (p.PropertyType == typeof (string))
+                        {
+                            Settings.Default[p.Name] = raw.ToString();
+                            applied++;
+                        }
+                        else if (p.PropertyType == typeof (System.Collections.Specialized.StringCollection))
+                        {
+                            var sc = new System.Collections.Specialized.StringCollection();
+                            var parts = raw.ToString().Split('\u0001');
+                            foreach (var part in parts)
+                            {
+                                if (!string.IsNullOrEmpty(part)) sc.Add(part);
+                            }
+                            Settings.Default[p.Name] = sc;
+                            applied++;
+                        }
+                    }
+                    catch { }
+                }
+                Settings.Default.Save();
+                LoadData(InitialFocus.NextItem);
+                ShowBalloon("配置已导入", "应用了 " + applied + " 项设置（部分需重启生效）");
+            }
+            catch (Exception ex)
+            {
+                ShowBalloon("导入失败", ex.Message);
+            }
+        }
+
+        private void ShowBalloon(string title, string text)
+        {
+            try
+            {
+                if (_notifyIcon == null) return;
+                _notifyIcon.BalloonTipTitle = title;
+                _notifyIcon.BalloonTipText = text;
+                _notifyIcon.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.None;
+                _notifyIcon.ShowBalloonTip(2500);
+            }
+            catch { }
+        }
+
+        #endregion
 
         private void HideWindow()
         {
@@ -1247,6 +1566,8 @@ namespace Switcheroo
         /// </summary>
         private void Quit()
         {
+            try { Switcheroo.Usage.UsageTracker.Save(); } catch { }
+            try { if (_commandServer != null) _commandServer.Dispose(); } catch { }
             _notifyIcon.Dispose();
             _notifyIcon = null;
             _hotkey.Dispose();

@@ -83,6 +83,12 @@ namespace Switcheroo
             DiagLogCheckBox.IsChecked = Settings.Default.DiagLogEnabled;
             UseWindowRulesCheckBox.IsChecked = Settings.Default.UseWindowRules;
             HookWatchdogCheckBox.IsChecked = Settings.Default.HookWatchdogEnabled;
+            PassThroughSuggestCheckBox.IsChecked = Settings.Default.PassThroughSuggestEnabled;
+            UsageRankingCheckBox.IsChecked = Settings.Default.UsageRankingEnabled;
+            ThumbnailPreviewCheckBox.IsChecked = Settings.Default.ThumbnailPreviewEnabled;
+            GroupByProcessCheckBox.IsChecked = Settings.Default.GroupByProcessEnabled;
+            ConfigExportCheckBox.IsChecked = Settings.Default.ConfigExportEnabled;
+            CommandLineCheckBox.IsChecked = Settings.Default.CommandLineEnabled;
             NumberOfAppColumnsComboBox.SelectedIndex = Settings.Default.NumberOfAppColumns;
             ColumnWidth.Text = Settings.Default.UserWidth.ToString();
 
@@ -176,6 +182,12 @@ namespace Switcheroo
             Settings.Default.DiagLogEnabled = DiagLogCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.UseWindowRules = UseWindowRulesCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.HookWatchdogEnabled = HookWatchdogCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.PassThroughSuggestEnabled = PassThroughSuggestCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.UsageRankingEnabled = UsageRankingCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.ThumbnailPreviewEnabled = ThumbnailPreviewCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.GroupByProcessEnabled = GroupByProcessCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.ConfigExportEnabled = ConfigExportCheckBox.IsChecked.GetValueOrDefault();
+            Settings.Default.CommandLineEnabled = CommandLineCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.NumberOfAppColumns = NumberOfAppColumnsComboBox.SelectedIndex;
             double columnWidth;
             if (double.TryParse(ColumnWidth.Text, out columnWidth))

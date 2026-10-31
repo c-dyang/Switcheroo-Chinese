@@ -117,6 +117,10 @@
     <Compile Include="IconToBitmapConverter.cs" />
     <Compile Include="BoolToWhateverConverter.cs" />
     <Compile Include="Theme.cs" />
+    <Compile Include="Usage\UsageTracker.cs" />
+    <Compile Include="Preview\ThumbnailProvider.cs" />
+    <Compile Include="Ipc\CommandServer.cs" />
+    <Compile Include="SimpleJson.cs" />
     <Compile Include="TitleFormatter.cs" />
     <Compile Include="WindowCloser.cs" />
     <Compile Include="WindowHandleToCachedIconConverter.cs" />

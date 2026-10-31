@@ -269,6 +269,62 @@ namespace Switcheroo.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool PassThroughSuggestEnabled {
+            get { return ((bool)(this["PassThroughSuggestEnabled"])); }
+            set { this["PassThroughSuggestEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool UsageRankingEnabled {
+            get { return ((bool)(this["UsageRankingEnabled"])); }
+            set { this["UsageRankingEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ConfigExportEnabled {
+            get { return ((bool)(this["ConfigExportEnabled"])); }
+            set { this["ConfigExportEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ThumbnailPreviewEnabled {
+            get { return ((bool)(this["ThumbnailPreviewEnabled"])); }
+            set { this["ThumbnailPreviewEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool CommandLineEnabled {
+            get { return ((bool)(this["CommandLineEnabled"])); }
+            set { this["CommandLineEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool GroupByProcessEnabled {
+            get { return ((bool)(this["GroupByProcessEnabled"])); }
+            set { this["GroupByProcessEnabled"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string UsageStats {
+            get { return ((string)(this["UsageStats"])); }
+            set { this["UsageStats"] = value; }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("3")]
         public int NumberOfAppColumns {
             get {

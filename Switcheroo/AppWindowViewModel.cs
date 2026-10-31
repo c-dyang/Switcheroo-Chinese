@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -54,6 +54,25 @@ namespace Switcheroo
         public IntPtr HWnd
         {
             get { return AppWindow.HWnd; }
+        }
+
+        /// <summary>
+        /// 窗口缩略图（悬停时按需抓取，见 ThumbnailProvider）。开关关闭或抓不到时为 null。
+        /// </summary>
+        public System.Windows.Media.Imaging.BitmapSource Thumbnail
+        {
+            get
+            {
+                try
+                {
+                    if (!Switcheroo.Properties.Settings.Default.ThumbnailPreviewEnabled) return null;
+                    return Switcheroo.Preview.ThumbnailProvider.Get(HWnd);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
         }
 
         private string _formattedTitle;

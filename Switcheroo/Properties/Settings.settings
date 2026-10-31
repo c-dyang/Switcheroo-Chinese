@@ -67,6 +67,27 @@
     <Setting Name="HookWatchdogEnabled" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
     </Setting>
+    <Setting Name="PassThroughSuggestEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="UsageRankingEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="ConfigExportEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="ThumbnailPreviewEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="CommandLineEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="GroupByProcessEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="UsageStats" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
     <Setting Name="NumberOfAppColumns" Type="System.Int32" Scope="User">      <Value Profile="(Default)">0</Value>
     </Setting>
     <Setting Name="MaximumResultCountEnabled" Type="System.Boolean" Scope="User">

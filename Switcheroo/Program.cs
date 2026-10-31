@@ -68,6 +68,14 @@ namespace Switcheroo
         private static void Main()
         {
             Switcheroo.Core.DiagLog.Init();
+
+            // 命令行接口：switcheroo.exe --show "查询词" / --switch "查询词"
+            // 单实例场景下第二个进程只把命令塞进命名管道然后退出。
+            if (TryRunCommandLine())
+            {
+                return;
+            }
+
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
                 Switcheroo.Core.DiagLog.Error("AppDomain.UnhandledException", e.ExceptionObject as Exception);
@@ -202,8 +210,41 @@ namespace Switcheroo
 
         private static string CurrentSettingsFilePath;
 
-        private static void MakePortable(ApplicationSettingsBase settings)
+        /// <summary>
+        /// 处理 --show / --switch：把命令发给已运行实例。返回 true 表示"命令已交给实例，本进程应退出"。
+        /// 没有实例在跑时返回 false（照常启动，命令词当参数丢掉）。
+        /// </summary>
+        private static bool TryRunCommandLine()
         {
+            try
+            {
+                string[] argv = Environment.GetCommandLineArgs();
+                if (argv == null || argv.Length < 2) return false;
+
+                string verb = null;
+                string arg = null;
+                for (int i = 1; i < argv.Length; i++)
+                {
+                    var a = argv[i];
+                    if (a == "--show" || a == "-s" || a == "--switch" || a == "-x")
+                    {
+                        verb = (a == "--switch" || a == "-x") ? "switch" : "show";
+                        if (i + 1 < argv.Length) arg = argv[i + 1];
+                        break;
+                    }
+                }
+                if (verb == null) return false;
+                if (arg == null) arg = string.Empty;
+
+                return Switcheroo.Ipc.CommandServer.TrySend(verb + "|" + arg);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void MakePortable(ApplicationSettingsBase settings)        {
             var portableSettingsProvider = new PortableSettingsProvider();
             CurrentSettingsFilePath = portableSettingsProvider.SettingsFilePath;
             settings.Providers.Add(portableSettingsProvider);
