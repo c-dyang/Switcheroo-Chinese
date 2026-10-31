@@ -558,14 +558,15 @@ namespace Switcheroo
             bool useRules = Settings.Default.UseWindowRules;
             _unfilteredWindowList = new WindowFinder().GetWindows()
                 .Where(w => !IsBlacklisted(w.ProcessTitle))
-                .Where(w => !useRules || !_highlightService.ShouldHide(w.ProcessTitle, w.WindowTitle, w.ClassName))
                 .Select(window =>
                 {
                     var vm = new AppWindowViewModel(window);
                     var rule = _highlightService.FindMatch(vm.ProcessTitle, vm.WindowTitle, window.ClassName);
                     vm.ApplyHighlight(rule, false);
                     return vm;
-                }).ToList();
+                })
+                .Where(vm => !useRules || !_highlightService.ShouldHide(vm.ProcessTitle, vm.WindowTitle, vm.AppWindow.ClassName))
+                .ToList();
 
             long tFetch = sw.ElapsedMilliseconds;
 
