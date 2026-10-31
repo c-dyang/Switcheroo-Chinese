@@ -19,7 +19,7 @@
  */
 
 using System;
-using System.Diagnostics;
+using System.Windows;
 using System.Windows.Forms;
 using ManagedWinapi;
 using ManagedWinapi.Hooks;
@@ -40,12 +40,14 @@ namespace Switcheroo
         public event AltTabHookEventHandler Pressed;
         private const int AltKey = 32;
         private const int CtrlKey = 11;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
+        private const int WM_SYSKEYDOWN = 0x0104;
+        private const int WM_SYSKEYUP = 0x0105;
         private readonly KeyboardKey _leftShiftKey = new KeyboardKey(Keys.LShiftKey);
         private readonly KeyboardKey _rightShiftKey = new KeyboardKey(Keys.RShiftKey);
         private readonly KeyboardKey _ctrlKey = new KeyboardKey(Keys.LControlKey);
         private readonly KeyboardKey _altKey = new KeyboardKey(Keys.LMenu);
-        private readonly int WM_KEYDOWN = 0x0100;
-        private readonly int WM_SYSKEYDOWN = 0x0104;
 
         // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
         private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
@@ -57,6 +59,11 @@ namespace Switcheroo
             _lowLevelKeyboardHook.StartHook();
         }
 
+        /// <summary>
+        /// WH_KEYBOARD_LL 回调：**必须在 LowLevelHooksTimeout（默认 300ms）内返回**，否则系统会
+        /// 静默旁路本钩子，后续按键直接漏给前台程序（表现为"别的程序收到了不属于它的键"）。
+        /// ⇒ 这里只做廉价判定 + 立刻吞键，真正的窗口枚举与 UI 全部丢给 UI 线程异步执行。
+        /// </summary>
         private void OnMessageIntercepted(LowLevelMessage lowLevelMessage, ref bool handled)
         {
             var keyboardMessage = lowLevelMessage as LowLevelKeyboardMessage;
@@ -65,39 +72,69 @@ namespace Switcheroo
                 return;
             }
 
-            // 诊断：记录钩子看到的关键按键（Alt 按下期间的关键键 + Alt/Space 本身），
-            // 用来判断"AIMP 自己弹窗"是不是有键从钩子里漏过去了。
-            try
-            {
-                var vk = keyboardMessage.VirtualKeyCode;
-                var altDown = IsKeyDown(_altKey);
-                if (altDown || vk == 0x12 || vk == 0x20 || vk == 0x09)
-                {
-                    Switcheroo.Core.DiagLog.Info(
-                        "Hook: vk=0x" + vk.ToString("X2")
-                        + " msg=0x" + keyboardMessage.Message.ToString("X")
-                        + " alt=" + altDown
-                        + " tab=" + (vk == 0x09));
-                }
-            }
-            catch { }
-
-            if (!IsTabKeyDown(keyboardMessage))
+            if (keyboardMessage.VirtualKeyCode != (int) Keys.Tab)
             {
                 return;
             }
 
+            // 廉价判定：Alt 必须按下（GetAsyncKeyState，无阻塞）
             if (!IsKeyDown(_altKey))
             {
                 return;
             }
 
-            var shiftKeyDown = IsKeyDown(_leftShiftKey) || IsKeyDown(_rightShiftKey);
-            var ctrlKeyDown = IsKeyDown(_ctrlKey);
+            // 钩子被用户在选项里关掉时完全不要介入，避免把 Alt+Tab 吃掉
+            bool hookEnabled;
+            try { hookEnabled = Settings.Default.AltTabHook; } catch { hookEnabled = false; }
+            if (!hookEnabled)
+            {
+                return;
+            }
 
-            var eventArgs = OnPressed(shiftKeyDown, ctrlKeyDown);
+            var isDown = keyboardMessage.Message == WM_KEYDOWN || keyboardMessage.Message == WM_SYSKEYDOWN;
+            var isUp = keyboardMessage.Message == WM_KEYUP || keyboardMessage.Message == WM_SYSKEYUP;
 
-            handled = eventArgs.Handled;
+            // Tab 按下与抬起都当场吞掉：漏给前台程序的 Tab 会被当成"应用自己的按键"
+            handled = true;
+
+            if (!isDown)
+            {
+                return;
+            }
+
+            var shiftDown = IsKeyDown(_leftShiftKey) || IsKeyDown(_rightShiftKey);
+            var ctrlDown = IsKeyDown(_ctrlKey);
+            var args = new AltTabHookEventArgs {ShiftDown = shiftDown, CtrlDown = ctrlDown};
+
+            try
+            {
+                Switcheroo.Core.DiagLog.Info("Hook: Alt+Tab intercepted (shift=" + shiftDown + " ctrl=" + ctrlDown + ")");
+            }
+            catch
+            {
+            }
+
+            // 重活（窗口枚举 / 布局 / 图标）交给 UI 线程排队，钩子回调立即返回
+            var dispatcher = System.Windows.Application.Current == null
+                ? null
+                : System.Windows.Application.Current.Dispatcher;
+            if (dispatcher == null)
+            {
+                OnPressed(args);
+                return;
+            }
+
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    OnPressed(args);
+                }
+                catch (Exception ex)
+                {
+                    try { Switcheroo.Core.DiagLog.Error("AltTabHook handler failed", ex); } catch { }
+                }
+            }));
         }
 
         private static bool IsKeyDown(KeyboardKey keyboardKey)
@@ -105,21 +142,14 @@ namespace Switcheroo
             return (keyboardKey.AsyncState & 32768) != 0;
         }
 
-        private bool IsTabKeyDown(LowLevelKeyboardMessage keyboardMessage)
+        private AltTabHookEventArgs OnPressed(AltTabHookEventArgs args)
         {
-            return keyboardMessage.VirtualKeyCode == (int) Keys.Tab &&
-                   (keyboardMessage.Message == WM_KEYDOWN || keyboardMessage.Message == WM_SYSKEYDOWN);
-        }
-
-        private AltTabHookEventArgs OnPressed(bool shiftDown, bool ctrlDown)
-        {
-            var altTabHookEventArgs = new AltTabHookEventArgs { ShiftDown = shiftDown, CtrlDown = ctrlDown };
             var handler = Pressed;
             if (handler != null)
             {
-                handler(this, altTabHookEventArgs);
+                handler(this, args);
             }
-            return altTabHookEventArgs;
+            return args;
         }
 
         public void Dispose()
