@@ -224,6 +224,8 @@
                         <MenuItem Header="加入黑名单" Click="ContextMenu_AddToBlacklist" ToolTip="不再在切换列表中显示该进程的所有窗口" />
                         <MenuItem x:Name="BlacklistRemoveMenu" Header="从黑名单移除" />
                         <MenuItem Header="让路（不接管 Alt+Tab）" Click="ContextMenu_AddToPassThrough" ToolTip="该进程在前台时把 Alt+Tab 交回系统切换器：避免抢前台导致它误弹窗或卡死（示例：AIMP 迷你播放模块）" />
+                        <MenuItem Header="规则：不显示此窗口类" Click="ContextMenu_AddSkipClassRule" ToolTip="按窗口类排除（比进程黑名单更精准）" />
+                        <MenuItem Header="规则：让路此窗口类" Click="ContextMenu_AddPassThroughClassRule" ToolTip="按窗口类让路：只有这个窗口类在前台时不接管 Alt+Tab" />
                         <Separator />
 
                         <!-- Color Row -->

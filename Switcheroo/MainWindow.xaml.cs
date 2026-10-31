@@ -553,9 +553,12 @@ namespace Switcheroo
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 2. Fetch Windows (黑名单进程过滤：右键"加入黑名单"的进程不再出现在切换列表)
+            // 2. Fetch Windows
+            //    过滤层：① 进程黑名单（旧机制）② 窗口规则动作 Hide / SkipInList（新机制，UseWindowRules 开关）
+            bool useRules = Settings.Default.UseWindowRules;
             _unfilteredWindowList = new WindowFinder().GetWindows()
                 .Where(w => !IsBlacklisted(w.ProcessTitle))
+                .Where(w => !useRules || !_highlightService.ShouldHide(w.ProcessTitle, w.WindowTitle, w.ClassName))
                 .Select(window =>
                 {
                     var vm = new AppWindowViewModel(window);
@@ -581,6 +584,24 @@ namespace Switcheroo
                     + " list=" + sb.ToString());
             }
             catch { }
+
+            // 规则置顶（Action = Pin）：命中的窗口挪到列表前部，但前台窗口仍固定在第 0 位
+            if (useRules)
+            {
+                try
+                {
+                    var rulePinned = _unfilteredWindowList
+                        .Skip(1)
+                        .Where(vm => _highlightService.IsRulePinned(vm.ProcessTitle, vm.WindowTitle, vm.AppWindow.ClassName))
+                        .ToList();
+                    if (rulePinned.Count > 0)
+                    {
+                        foreach (var p in rulePinned) _unfilteredWindowList.Remove(p);
+                        _unfilteredWindowList.InsertRange(1, rulePinned);
+                    }
+                }
+                catch { }
+            }
 
             // The foreground window stays at the top (Index 0)
             var firstWindow = _unfilteredWindowList.FirstOrDefault();
@@ -2242,6 +2263,46 @@ namespace Switcheroo
                 Settings.Default.Save();
 
                 // Reload the data to reflect the changes
+                LoadData(InitialFocus.NextItem);
+            }
+        }
+
+        /// <summary>右键：按窗口类创建"不显示"规则（规则动作 = SkipInList）。</summary>
+        private void ContextMenu_AddSkipClassRule(object sender, RoutedEventArgs e)
+        {
+            AddClassRule(sender, RuleAction.SkipInList, "不显示：");
+        }
+
+        /// <summary>右键：按窗口类创建"让路"规则（规则动作 = PassThrough）。</summary>
+        private void ContextMenu_AddPassThroughClassRule(object sender, RoutedEventArgs e)
+        {
+            AddClassRule(sender, RuleAction.PassThrough, "让路：");
+        }
+
+        private void AddClassRule(object sender, RuleAction action, string namePrefix)
+        {
+            var menuItem = sender as System.Windows.Controls.MenuItem;
+            if (menuItem?.DataContext is AppWindowViewModel window)
+            {
+                string cls = window.AppWindow.ClassName;
+                if (string.IsNullOrEmpty(cls)) return;
+
+                foreach (var r in _highlightService.Rules)
+                {
+                    if (r.Action == action && r.MatchType == MatchType.WindowClass &&
+                        string.Equals(r.Argument, cls, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return; // 已有同动作同类的规则
+                    }
+                }
+
+                _highlightService.AddRule(new HighlightRule
+                {
+                    Name = namePrefix + cls,
+                    MatchType = MatchType.WindowClass,
+                    Argument = cls,
+                    Action = action
+                });
                 LoadData(InitialFocus.NextItem);
             }
         }

@@ -66,6 +66,15 @@
                 写到 %AppData%\Switcheroo\diag\yyyyMMdd.log，只在排查问题时需要。<LineBreak />
                 <Italic>* 需要重启 Switcheroo</Italic>
             </TextBlock>
+            <CheckBox x:Name="UseWindowRulesCheckBox" Margin="5,5,5,1" Content="启用窗口规则（隐藏 / 置顶 / 让路）"/>
+            <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
+                规则可在「设置高亮」对话框里指定动作；关掉后只保留旧的黑名单与让路名单。
+            </TextBlock>
+            <CheckBox x:Name="HookWatchdogCheckBox" Margin="5,5,5,1" Content="钩子看门狗 *"/>
+            <TextBlock Margin="25,0,5,10" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap">
+                检测到按键漏给前台程序时自动重装低级键盘钩子。<LineBreak />
+                <Italic>* 需要重启 Switcheroo</Italic>
+            </TextBlock>
             <TextBlock TextWrapping="Wrap" Margin="5,10,5,1">常用进程显示的列数：</TextBlock>
             <ComboBox Name="NumberOfAppColumnsComboBox" Margin="25,5,0,10" Width="150" HorizontalAlignment="Left">
                 <ComboBoxItem Content="0" Tag="0"/>

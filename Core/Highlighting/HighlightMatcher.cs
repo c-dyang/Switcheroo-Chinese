@@ -8,6 +8,7 @@ namespace Switcheroo.Core.Highlighting
         public bool IsMatch(HighlightRule rule, string processTitle, string windowTitle, string className)
         {
             if (rule == null || string.IsNullOrEmpty(rule.Argument)) return false;
+            if (!rule.Enabled) return false;
 
             switch (rule.MatchType)
             {
@@ -27,6 +28,12 @@ namespace Switcheroo.Core.Highlighting
                     return false;
             }
             return false;
+        }
+
+        /// <summary>规则是否命中且动作等于指定动作。</summary>
+        public bool IsMatchAction(HighlightRule rule, RuleAction action, string processTitle, string windowTitle, string className)
+        {
+            return rule != null && rule.Action == action && IsMatch(rule, processTitle, windowTitle, className);
         }
     }
 }

@@ -78,8 +78,23 @@ namespace Switcheroo
         private System.Windows.Threading.DispatcherTimer _bannerWatch;
         private HashSet<string> _lastAimpWindows = new HashSet<string>();
 
-        // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
-        private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
+        private LowLevelKeyboardHook _lowLevelKeyboardHook;
+
+        // 钩子看门狗：LL 钩子被系统旁路（LowLevelHooksTimeout）时键会静默漏给前台程序。
+        // 判据 = 系统有键盘输入、但我们 60 秒没收到任何键事件 ⇒ 重装钩子并记日志。
+        private System.Windows.Threading.DispatcherTimer _hookWatchdog;
+        private DateTime _lastHookKeyUtc = DateTime.UtcNow;
+        private uint _lastInputTick;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         // 内存环形缓冲：钩子回调里绝不做文件 IO（IO 会拖慢回调 → 触发 LowLevelHooksTimeout）
         private readonly List<string> _trace = new List<string>(96);
@@ -106,6 +121,7 @@ namespace Switcheroo
             _lowLevelKeyboardHook = new LowLevelKeyboardHook();
             _lowLevelKeyboardHook.MessageIntercepted += OnMessageIntercepted;
             _lowLevelKeyboardHook.StartHook();
+            StartHookWatchdog();
 
             // 诊断：扫描 AIMP 的全部窗口（顶层 + 子窗口），记录类名出现/消失的准确时刻与当时前台窗口。
             // 注意必须在应用自身进程里跑（本程序在用户的交互式会话里）；从 ssh/session 0 派生的进程
@@ -160,6 +176,8 @@ namespace Switcheroo
             var vk = keyboardMessage.VirtualKeyCode;
             var msg = keyboardMessage.Message;
             var isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+
+            _lastHookKeyUtc = DateTime.UtcNow;
 
             // 全键记录（内存，无 IO）：漏给前台的键在 trace 里没有 SWALLOWED 标记
             Trace(vk, msg, false, "pass");
@@ -337,13 +355,6 @@ namespace Switcheroo
                     }
                 }
 
-                // 进程级"让路名单"（用户维护，托盘菜单可移除）：名单为空时零开销，不查进程名
-                var list = Switcheroo.Properties.Settings.Default.PassThroughProcesses;
-                if (list == null || list.Count == 0)
-                {
-                    return false;
-                }
-
                 uint pid;
                 GetWindowThreadProcessId(h, out pid);
                 if (pid == 0)
@@ -351,7 +362,24 @@ namespace Switcheroo
                     return false;
                 }
                 var name = GetProcessNameCached((int) pid);
-                if (string.IsNullOrEmpty(name))
+
+                // ① 用户规则（规则动作 = PassThrough）：静态快照，钩子里不做设置读取/反序列化
+                bool useRules;
+                try { useRules = Switcheroo.Properties.Settings.Default.UseWindowRules; }
+                catch { useRules = true; }
+                if (useRules)
+                {
+                    var tb = new StringBuilder(256);
+                    GetWindowText(h, tb, 256);
+                    if (Switcheroo.Highlighting.HighlightService.StaticIsPassThrough(name, tb.ToString(), cls))
+                    {
+                        return true;
+                    }
+                }
+
+                // ② 进程级"让路名单"（用户维护，托盘菜单可移除）：名单为空时零开销，不查进程名
+                var list = Switcheroo.Properties.Settings.Default.PassThroughProcesses;
+                if (list == null || list.Count == 0 || string.IsNullOrEmpty(name))
                 {
                     return false;
                 }
@@ -468,9 +496,92 @@ namespace Switcheroo
 
         public void Dispose()
         {
+            try
+            {
+                if (_hookWatchdog != null) _hookWatchdog.Stop();
+                if (_bannerWatch != null) _bannerWatch.Stop();
+            }
+            catch
+            {
+            }
             if (_lowLevelKeyboardHook != null)
             {
                 _lowLevelKeyboardHook.Dispose();
+            }
+        }
+
+        // ---------------- 钩子看门狗 ----------------
+
+        private void StartHookWatchdog()
+        {
+            try
+            {
+                bool enabled;
+                try { enabled = Switcheroo.Properties.Settings.Default.HookWatchdogEnabled; }
+                catch { enabled = true; }
+                if (!enabled) return;
+
+                _hookWatchdog = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(60)
+                };
+                _hookWatchdog.Tick += delegate { CheckHookAlive(); };
+                _hookWatchdog.Start();
+            }
+            catch
+            {
+            }
+        }
+
+        /// <summary>
+        /// 系统有键盘输入、但本钩子 60 秒内一个键事件都没收到 ⇒ 判定被系统旁路，重装钩子。
+        /// 只在「确有输入」时触发，且重装本身开销极小，误判代价可忽略。
+        /// </summary>
+        private void CheckHookAlive()
+        {
+            try
+            {
+                var li = new LASTINPUTINFO();
+                li.cbSize = (uint) Marshal.SizeOf(typeof (LASTINPUTINFO));
+                bool got = GetLastInputInfo(ref li);
+                bool inputAdvanced = got && li.dwTime != _lastInputTick;
+                _lastInputTick = li.dwTime;
+
+                // 刚启动的 2 分钟内不判（避免误报）
+                if (!inputAdvanced || (DateTime.UtcNow - _lastHookKeyUtc).TotalSeconds < 60) return;
+
+                Switcheroo.Core.DiagLog.Info("HOOK STALL: 系统有键盘输入但 60s 未收到任何键事件 -> 重装钩子");
+                ReinstallHook();
+            }
+            catch
+            {
+            }
+        }
+
+        private void ReinstallHook()
+        {
+            try
+            {
+                if (_lowLevelKeyboardHook != null)
+                {
+                    try
+                    {
+                        _lowLevelKeyboardHook.MessageIntercepted -= OnMessageIntercepted;
+                        _lowLevelKeyboardHook.Dispose();
+                    }
+                    catch
+                    {
+                    }
+                }
+                _lowLevelKeyboardHook = new LowLevelKeyboardHook();
+                _lowLevelKeyboardHook.MessageIntercepted += OnMessageIntercepted;
+                _lowLevelKeyboardHook.StartHook();
+                _lastHookKeyUtc = DateTime.UtcNow;
+                Switcheroo.Core.DiagLog.Info("HOOK REINSTALLED");
+            }
+            catch (Exception ex)
+            {
+                Switcheroo.Core.DiagLog.Error("HOOK REINSTALL FAILED", ex);
             }
         }
     }
