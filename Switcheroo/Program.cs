@@ -115,6 +115,15 @@ namespace Switcheroo
 
                     MigrateUserSettings();
 
+                    // 诊断日志开关交给用户设置（默认开）。关掉则完全不写文件、不重定向 Console。
+                    try
+                    {
+                        Switcheroo.Core.DiagLog.UserEnabled = Settings.Default.DiagLogEnabled;
+                    }
+                    catch
+                    {
+                    }
+
                     // Set the AppUserModelID for the process for proper taskbar grouping and toast notifications
                     SetCurrentProcessExplicitAppUserModelID(AppId);
 

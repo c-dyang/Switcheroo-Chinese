@@ -80,6 +80,7 @@ namespace Switcheroo
             MaxResultsBox.Text = Settings.Default.MaximumResultCount.ToString();
             MaxResultsBox.IsEnabled = Settings.Default.MaximumResultCountEnabled;
             RunAsAdministrator.IsChecked = Settings.Default.RunAsAdmin;
+            DiagLogCheckBox.IsChecked = Settings.Default.DiagLogEnabled;
             NumberOfAppColumnsComboBox.SelectedIndex = Settings.Default.NumberOfAppColumns;
             ColumnWidth.Text = Settings.Default.UserWidth.ToString();
 
@@ -170,6 +171,7 @@ namespace Switcheroo
                 Settings.Default.MaximumResultCount = maxResults;
             }
             Settings.Default.RunAsAdmin = RunAsAdministrator.IsChecked.GetValueOrDefault();
+            Settings.Default.DiagLogEnabled = DiagLogCheckBox.IsChecked.GetValueOrDefault();
             Settings.Default.NumberOfAppColumns = NumberOfAppColumnsComboBox.SelectedIndex;
             double columnWidth;
             if (double.TryParse(ColumnWidth.Text, out columnWidth))

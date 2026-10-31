@@ -19,6 +19,12 @@ namespace Switcheroo.Core
         public static bool Enabled { get; private set; }
         public static string LogPath { get { return _path; } }
 
+        /// <summary>
+        /// 用户开关（设置里的「启用诊断日志」）。关掉后不再写文件，也不重定向 Console。
+        /// 由 Program 在读取设置后设置；默认 true 以保持旧行为。
+        /// </summary>
+        public static bool UserEnabled = true;
+
         public static void Init()
         {
             try
@@ -64,7 +70,7 @@ namespace Switcheroo.Core
 
         internal static void Raw(string level, string line)
         {
-            if (!Enabled || _path == null || line == null) return;
+            if (!Enabled || !UserEnabled || _path == null || line == null) return;
             try
             {
                 lock (Gate)
@@ -102,6 +108,7 @@ namespace Switcheroo.Core
 
             private void WriteRaw(string value)
             {
+                if (!UserEnabled) return;
                 try
                 {
                     lock (Gate)

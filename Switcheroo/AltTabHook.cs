@@ -58,6 +58,9 @@ namespace Switcheroo
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string lpszClass, string lpszWindow);
 
@@ -333,12 +336,72 @@ namespace Switcheroo
                         return true;
                     }
                 }
+
+                // 进程级"让路名单"（用户维护，托盘菜单可移除）：名单为空时零开销，不查进程名
+                var list = Switcheroo.Properties.Settings.Default.PassThroughProcesses;
+                if (list == null || list.Count == 0)
+                {
+                    return false;
+                }
+
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                if (pid == 0)
+                {
+                    return false;
+                }
+                var name = GetProcessNameCached((int) pid);
+                if (string.IsNullOrEmpty(name))
+                {
+                    return false;
+                }
+                foreach (var p in list)
+                {
+                    if (string.Equals(name, p, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
                 return false;
             }
             catch
             {
                 return false;
             }
+        }
+
+        private static readonly Dictionary<int, KeyValuePair<string, DateTime>> ProcessNameCache =
+            new Dictionary<int, KeyValuePair<string, DateTime>>();
+
+        /// <summary>
+        /// pid → 进程名（带缓存）。钩子回调里不能每次 OpenProcess：缓存 3 秒，超 256 条直接清空。
+        /// </summary>
+        private static string GetProcessNameCached(int pid)
+        {
+            KeyValuePair<string, DateTime> entry;
+            if (ProcessNameCache.TryGetValue(pid, out entry) &&
+                (DateTime.UtcNow - entry.Value).TotalSeconds < 3)
+            {
+                return entry.Key;
+            }
+            string name = null;
+            try
+            {
+                name = System.Diagnostics.Process.GetProcessById(pid).ProcessName;
+            }
+            catch
+            {
+            }
+            if (string.IsNullOrEmpty(name))
+            {
+                return null;
+            }
+            if (ProcessNameCache.Count > 256)
+            {
+                ProcessNameCache.Clear();
+            }
+            ProcessNameCache[pid] = new KeyValuePair<string, DateTime>(name, DateTime.UtcNow);
+            return name;
         }
 
         private static bool ShouldSuppressAltDown()
