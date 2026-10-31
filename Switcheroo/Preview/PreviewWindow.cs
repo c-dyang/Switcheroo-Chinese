@@ -29,6 +29,9 @@ namespace Switcheroo.Preview
 
         private const int SWP_NOACTIVATE = 0x0010;
         private const int SWP_SHOWWINDOW = 0x0040;
+        private const int SWP_HIDEWINDOW = 0x0080;
+        private const int SWP_NOMOVE = 0x0002;
+        private const int SWP_NOSIZE = 0x0001;
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
 
         [StructLayout(LayoutKind.Sequential)]
@@ -132,7 +135,14 @@ namespace Switcheroo.Preview
             {
                 ReleaseThumbs();
                 _canvas.Children.Clear();
-                if (IsVisible) Hide();
+                // 注意：窗口可能是用 SetWindowPos(SWP_SHOWWINDOW) 显示的，WPF 的 IsVisible 不一定同步，
+                // 所以这里无条件 Hide() + SWP_HIDEWINDOW 双保险，避免预览窗留在屏幕上不消失。
+                if (_hwnd != IntPtr.Zero)
+                {
+                    SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                        SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE);
+                }
+                Hide();
             }
             catch
             {

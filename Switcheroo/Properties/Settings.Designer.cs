@@ -315,6 +315,8 @@ namespace Switcheroo.Properties {
             set { this["GroupByProcessEnabled"] = value; }
         }
         
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool GroupCycleEnabled {
             get { return ((bool)(this["GroupCycleEnabled"])); }
