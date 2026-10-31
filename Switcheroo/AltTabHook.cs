@@ -68,6 +68,8 @@ namespace Switcheroo
         // 只对这些类抑制 Alt，而且按下/抬起成对吞 —— 只吞抬起会让系统认为 Alt 一直按着。
         private static readonly string[] AltReactiveForegroundClasses = { "TAIMPTrayControl" };
         private bool _altDownSuppressed;
+        // 钩子自己维护的 Alt 状态：一旦某次 Alt 被吞，GetAsyncKeyState 不再可靠
+        private bool _altIsDown;
 
         public AltTabHook()
         {
@@ -99,6 +101,7 @@ namespace Switcheroo
             // ---- Alt：仅对"收到裸 Alt 就会自己执行命令"的前台窗口做抑制，且成对吞 ----
             if (vk == 0x12 || vk == 0xA4 || vk == 0xA5)
             {
+                _altIsDown = isDown;
                 if (!handled)
                 {
                     if (isDown && ShouldSuppressAltDown())
@@ -127,7 +130,8 @@ namespace Switcheroo
                 return;
             }
 
-            if (!IsKeyDown(_altKey))
+            var altDown = IsKeyDown(_altKey) || _altIsDown;
+            if (!altDown)
             {
                 return;
             }
