@@ -83,7 +83,14 @@ namespace Switcheroo
 
         // 这些前台窗口收到裸 Alt 按下会自己执行命令（AIMP 贴边模式的托盘控制条 → 弹「关于」）。
         // 只对这些类抑制 Alt，而且按下/抬起成对吞 —— 只吞抬起会让系统认为 Alt 一直按着。
-        private static readonly string[] AltReactiveForegroundClasses = { "TAIMPTrayControl" };
+        // AIMP（迷你播放模块 / 主窗）对"Alt 按下后失去前台"敏感：只要切换器抢走前台，它 128ms 后
+        // 就弹「关于」（TAIMPAboutForm + 子窗口 TAIMPAboutBanner）。实测吞/放 Alt 都无法避免，
+        // 唯一稳定做法是在这些前台窗口下把 Alt+Tab 让回系统处理。
+        private static readonly string[] PassThroughForegroundClasses =
+        {
+            "TAIMPTrayControl",
+            "TAIMPMainForm"
+        };
         private bool _altDownSuppressed;
         // 钩子自己维护的 Alt 状态：一旦某次 Alt 被吞，GetAsyncKeyState 不再可靠
         private bool _altIsDown;
@@ -151,7 +158,14 @@ namespace Switcheroo
             // 全键记录（内存，无 IO）：漏给前台的键在 trace 里没有 SWALLOWED 标记
             Trace(vk, msg, false, "pass");
 
-            // ---- Alt：仅对"收到裸 Alt 就会自己执行命令"的前台窗口做抑制，且成对吞 ----
+            // ---- 让路：这些前台窗口下不接管 Alt+Tab（交回系统），避免触发对方自己的菜单/关于逻辑 ----
+            if (vk == (int) Keys.Tab && IsPassThroughForeground())
+            {
+                Trace(vk, msg, false, "passthrough-fg");
+                return;
+            }
+
+            // ---- Alt：保留成对抑制能力（当前名单为空即完全不介入） ----
             if (vk == 0x12 || vk == 0xA4 || vk == 0xA5)
             {
                 _altIsDown = isDown;
@@ -165,7 +179,6 @@ namespace Switcheroo
                     }
                     else if (!isDown && (_altDownSuppressed || ShouldSuppressAltDown()))
                     {
-                        // 抬起时前台才变成贴边窗口的情况也要吞：一次孤立的 Alt 抬起同样会触发它的菜单动作
                         handled = true;
                         _altDownSuppressed = false;
                         MarkLastSwallowed();
@@ -296,6 +309,32 @@ namespace Switcheroo
             catch
             {
                 return "?";
+            }
+        }
+
+        private static bool IsPassThroughForeground()
+        {
+            try
+            {
+                var h = GetForegroundWindow();
+                var sb = new StringBuilder(256);
+                if (GetClassName(h, sb, 256) == 0)
+                {
+                    return false;
+                }
+                var cls = sb.ToString();
+                foreach (var c in PassThroughForegroundClasses)
+                {
+                    if (string.Equals(cls, c, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
             }
         }
 
