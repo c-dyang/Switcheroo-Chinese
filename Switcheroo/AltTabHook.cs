@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Switcheroo - The incremental-search task switcher for Windows.
  * https://github.com/coezbek/switcheroo
  * Copyright 2009, 2010 James Sulak
@@ -64,6 +64,23 @@ namespace Switcheroo
             {
                 return;
             }
+
+            // 诊断：记录钩子看到的关键按键（Alt 按下期间的关键键 + Alt/Space 本身），
+            // 用来判断"AIMP 自己弹窗"是不是有键从钩子里漏过去了。
+            try
+            {
+                var vk = keyboardMessage.VirtualKeyCode;
+                var altDown = IsKeyDown(_altKey);
+                if (altDown || vk == 0x12 || vk == 0x20 || vk == 0x09)
+                {
+                    Switcheroo.Core.DiagLog.Info(
+                        "Hook: vk=0x" + vk.ToString("X2")
+                        + " msg=0x" + keyboardMessage.Message.ToString("X")
+                        + " alt=" + altDown
+                        + " tab=" + (vk == 0x09));
+                }
+            }
+            catch { }
 
             if (!IsTabKeyDown(keyboardMessage))
             {
