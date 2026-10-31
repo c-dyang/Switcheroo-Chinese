@@ -75,6 +75,21 @@ namespace Switcheroo.Preview
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X, Y;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
         private readonly Canvas _canvas;
         private readonly List<IntPtr> _thumbs = new List<IntPtr>();
         private IntPtr _hwnd = IntPtr.Zero;
@@ -118,10 +133,32 @@ namespace Switcheroo.Preview
                     _hwnd = new WindowInteropHelper(this).Handle;
                 }
 
-                SetWindowPos(_hwnd, HWND_TOPMOST, leftPx, topPx,
-                    Math.Max(80, widthPx), Math.Max(60, heightPx), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                int wantW = Math.Max(80, widthPx);
+                int wantH = Math.Max(60, heightPx);
 
-                BuildCells(sources, Math.Max(80, widthPx), Math.Max(60, heightPx));
+                // 第一次：先按目标尺寸摆一次，用来测量"窗口坐标 vs 客户区坐标"的边框偏移
+                SetWindowPos(_hwnd, HWND_TOPMOST, leftPx, topPx, wantW, wantH,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                RECT wr, cr;
+                var clientOrigin = new POINT { X = 0, Y = 0 };
+                int frameW = 0, frameH = 0, offX = 0, offY = 0;
+                if (GetWindowRect(_hwnd, out wr) && GetClientRect(_hwnd, out cr) &&
+                    ClientToScreen(_hwnd, ref clientOrigin))
+                {
+                    frameW = (wr.Right - wr.Left) - (cr.Right - cr.Left);
+                    frameH = (wr.Bottom - wr.Top) - (cr.Bottom - cr.Top);
+                    offX = clientOrigin.X - wr.Left;
+                    offY = clientOrigin.Y - wr.Top;
+                }
+
+                // 第二次：把客户区精确摆到目标矩形（否则缩略图会整体偏移几像素）
+                SetWindowPos(_hwnd, HWND_TOPMOST,
+                    leftPx - offX, topPx - offY,
+                    wantW + Math.Max(0, frameW), wantH + Math.Max(0, frameH),
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                BuildCells(sources, wantW, wantH);
             }
             catch (Exception ex)
             {
@@ -185,16 +222,34 @@ namespace Switcheroo.Preview
 
             double scale = DpiScale();
 
+            // 末列/末行吸收整除余数，避免右边和下边出现 1~2px 的空隙
+            var colW = new int[cols];
+            var colX = new int[cols];
+            int baseW = (wpx - Gap * (cols - 1)) / cols;
+            for (int c = 0; c < cols; c++)
+            {
+                colW[c] = c == cols - 1 ? wpx - Gap * (cols - 1) - baseW * (cols - 1) : baseW;
+                colX[c] = c == 0 ? 0 : colX[c - 1] + colW[c - 1] + Gap;
+            }
+            var rowH = new int[rows];
+            var rowY = new int[rows];
+            int baseH = (hpx - Gap * (rows - 1)) / rows;
+            for (int r = 0; r < rows; r++)
+            {
+                rowH[r] = r == rows - 1 ? hpx - Gap * (rows - 1) - baseH * (rows - 1) : baseH;
+                rowY[r] = r == 0 ? 0 : rowY[r - 1] + rowH[r - 1] + Gap;
+            }
+
             for (int i = 0; i < n; i++)
             {
                 int cx = i % cols;
                 int cy = i / cols;
-                int cellW = (wpx - Gap * (cols - 1)) / cols;
-                int cellH = (hpx - Gap * (rows - 1)) / rows;
+                int cellW = colW[cx];
+                int cellH = rowH[cy];
                 if (cellW <= 4 || cellH <= 4) continue;
 
-                int left = cx * (cellW + Gap);
-                int top = cy * (cellH + Gap);
+                int left = colX[cx];
+                int top = rowY[cy];
                 var src = sources[i];
 
                 bool shown = false;

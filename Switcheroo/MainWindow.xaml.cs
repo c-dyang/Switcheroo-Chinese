@@ -1408,12 +1408,11 @@ namespace Switcheroo
                 }
                 catch { }
 
-                int wpx = Math.Max(160, (int) (360 * scale));
-                int hpx = Math.Max(100, (int) (220 * scale));
-
                 int switcherLeftPx = (int) (Left * scale);
                 int switcherTopPx = (int) (Top * scale);
                 int switcherRightPx = (int) ((Left + ActualWidth) * scale);
+                int switcherWpx = Math.Max(1, (int) (ActualWidth * scale));
+                int switcherHpx = Math.Max(1, (int) (ActualHeight * scale));
 
                 int waLeft = 0, waTop = 0, waRight = 0, waBottom = 0;
                 var monitor = _currentMonitor ?? MonitorHelper.GetMonitorFromCursor();
@@ -1433,12 +1432,54 @@ namespace Switcheroo
                     waBottom = (int) (wa.Bottom * scale);
                 }
 
-                int left = switcherRightPx + (int) (8 * scale);
-                if (left + wpx > waRight) left = switcherLeftPx - wpx - (int) (8 * scale);
+                int gap = Math.Max(6, (int) (8 * scale));
+                int waW = Math.Max(1, waRight - waLeft);
+                int waH = Math.Max(1, waBottom - waTop);
+
+                // 尺寸自适应切换器：高度取切换器高度的 55%（120~420），宽高比 16:9，且不超过屏宽的 45%
+                int hpx = (int) (switcherHpx * 0.55);
+                if (hpx < 120) hpx = 120;
+                if (hpx > 420) hpx = 420;
+                int wpx = (int) (hpx * 16.0 / 9.0);
+                int maxW = (int) (waW * 0.45);
+                if (wpx > maxW)
+                {
+                    wpx = maxW;
+                    hpx = (int) (wpx * 9.0 / 16.0);
+                }
+
+                int spaceRight = waRight - switcherRightPx - gap;
+                int spaceLeft = switcherLeftPx - waLeft - gap;
+
+                int left;
+                if (spaceRight >= wpx)
+                {
+                    left = switcherRightPx + gap;
+                }
+                else if (spaceLeft >= wpx)
+                {
+                    left = switcherLeftPx - wpx - gap;
+                }
+                else
+                {
+                    // 两侧都放不下：缩到空间较大的一侧，绝不压住切换器
+                    int side = Math.Max(spaceRight, spaceLeft);
+                    wpx = Math.Max(120, side);
+                    hpx = Math.Max(80, (int) (wpx * 9.0 / 16.0));
+                    if (hpx > waH) hpx = waH;
+                    left = spaceRight >= spaceLeft ? switcherRightPx + gap : switcherLeftPx - wpx - gap;
+                }
+
+                if (left + wpx > waRight) left = waRight - wpx;
                 if (left < waLeft) left = waLeft;
+
                 int top = switcherTopPx;
                 if (top + hpx > waBottom) top = waBottom - hpx;
                 if (top < waTop) top = waTop;
+
+                // 切换器本身可能比屏还宽/高（极端情况），保证预览不超出工作区
+                if (wpx > waW) wpx = waW;
+                if (hpx > waH) hpx = waH;
 
                 _previewWindow.ShowPreview(vm.GetGroupHwnds().ToArray(), left, top, wpx, hpx);
             }
