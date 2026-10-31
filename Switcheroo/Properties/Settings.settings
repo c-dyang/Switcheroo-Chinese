@@ -58,6 +58,9 @@
     <Setting Name="DiagLogEnabled" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
     </Setting>
+    <Setting Name="PassThroughSeeded" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
     <Setting Name="NumberOfAppColumns" Type="System.Int32" Scope="User">      <Value Profile="(Default)">0</Value>
     </Setting>
     <Setting Name="MaximumResultCountEnabled" Type="System.Boolean" Scope="User">

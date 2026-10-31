@@ -124,6 +124,27 @@ namespace Switcheroo
                     {
                     }
 
+                    // 一次性示例播种：让路名单为空时填入 AIMP 作为示例（用户可随时移除）。
+                    // 用 PassThroughSeeded 标记，确保"用户主动清空"之后不会被反复塞回来。
+                    try
+                    {
+                        if (!Settings.Default.PassThroughSeeded)
+                        {
+                            if (Settings.Default.PassThroughProcesses == null ||
+                                Settings.Default.PassThroughProcesses.Count == 0)
+                            {
+                                Settings.Default.PassThroughProcesses =
+                                    new System.Collections.Specialized.StringCollection();
+                                Settings.Default.PassThroughProcesses.Add("AIMP");
+                            }
+                            Settings.Default.PassThroughSeeded = true;
+                            Settings.Default.Save();
+                        }
+                    }
+                    catch
+                    {
+                    }
+
                     // Set the AppUserModelID for the process for proper taskbar grouping and toast notifications
                     SetCurrentProcessExplicitAppUserModelID(AppId);
 

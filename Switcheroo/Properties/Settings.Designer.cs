@@ -233,6 +233,18 @@ namespace Switcheroo.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool PassThroughSeeded {
+            get {
+                return ((bool)(this["PassThroughSeeded"]));
+            }
+            set {
+                this["PassThroughSeeded"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("3")]
         public int NumberOfAppColumns {
             get {
