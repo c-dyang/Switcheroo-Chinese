@@ -1408,11 +1408,17 @@ namespace Switcheroo
                 }
                 catch { }
 
-                int switcherLeftPx = (int) (Left * scale);
-                int switcherTopPx = (int) (Top * scale);
-                int switcherRightPx = (int) ((Left + ActualWidth) * scale);
-                int switcherWpx = Math.Max(1, (int) (ActualWidth * scale));
-                int switcherHpx = Math.Max(1, (int) (ActualHeight * scale));
+                // 用内容根元素的 PointToScreen 取"真实可见区域"的物理坐标：
+                // Left/Top 是窗口 DIP，且无边框透明窗口的内容并不从窗口 (0,0) 开始（有阴影/描边），
+                // 直接拿 Left/Top 会让预览整体偏高。
+                var root = (Content as FrameworkElement) ?? (FrameworkElement) this;
+                Point contentOrigin = root.PointToScreen(new Point(0, 0));
+
+                int switcherLeftPx = (int) Math.Round(contentOrigin.X);
+                int switcherTopPx = (int) Math.Round(contentOrigin.Y);
+                int switcherWpx = Math.Max(1, (int) Math.Round(root.ActualWidth * scale));
+                int switcherHpx = Math.Max(1, (int) Math.Round(root.ActualHeight * scale));
+                int switcherRightPx = switcherLeftPx + switcherWpx;
 
                 int waLeft = 0, waTop = 0, waRight = 0, waBottom = 0;
                 var monitor = _currentMonitor ?? MonitorHelper.GetMonitorFromCursor();
@@ -1482,6 +1488,14 @@ namespace Switcheroo
                 if (hpx > waH) hpx = waH;
 
                 _previewWindow.ShowPreview(vm.GetGroupHwnds().ToArray(), left, top, wpx, hpx);
+                try
+                {
+                    Switcheroo.Core.DiagLog.Info("Preview place: switcher@" + switcherLeftPx + "," + switcherTopPx
+                                                 + " size=" + switcherWpx + "x" + switcherHpx
+                                                 + " wa=" + waLeft + "," + waTop + "-" + waRight + "," + waBottom
+                                                 + " -> preview@" + left + "," + top + " " + wpx + "x" + hpx);
+                }
+                catch { }
             }
             catch (Exception ex)
             {
