@@ -61,8 +61,19 @@ namespace Switcheroo
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string lpszClass, string lpszWindow);
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc cb, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
         private System.Windows.Threading.DispatcherTimer _bannerWatch;
-        private IntPtr _lastBanner = IntPtr.Zero;
+        private HashSet<string> _lastAimpWindows = new HashSet<string>();
 
         // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
         private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
@@ -83,7 +94,9 @@ namespace Switcheroo
             _lowLevelKeyboardHook.MessageIntercepted += OnMessageIntercepted;
             _lowLevelKeyboardHook.StartHook();
 
-            // 诊断：轮询 AIMP 的横幅窗口（单次 API，开销可忽略），记录它出现的准确时刻 + 当时前台窗口
+            // 诊断：扫描 AIMP 的全部窗口（顶层 + 子窗口），记录类名出现/消失的准确时刻与当时前台窗口。
+            // 注意必须在应用自身进程里跑（本程序在用户的交互式会话里）；从 ssh/session 0 派生的进程
+            // 看不到交互桌面上的窗口，EnumWindows 会是空的。
             try
             {
                 _bannerWatch = new System.Windows.Threading.DispatcherTimer
@@ -94,15 +107,22 @@ namespace Switcheroo
                 {
                     try
                     {
-                        var h = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "TAIMPAboutBanner", null);
-                        if (h != _lastBanner)
+                        var now = ScanAimpWindows();
+                        foreach (var w in now)
                         {
-                            Switcheroo.Core.DiagLog.Info(
-                                "BANNER " + (_lastBanner == IntPtr.Zero ? "APPEARED" : "CLOSED")
-                                + " hwnd=0x" + h.ToInt64().ToString("X")
-                                + " fg=" + ForegroundClass());
-                            _lastBanner = h;
+                            if (!_lastAimpWindows.Contains(w))
+                            {
+                                Switcheroo.Core.DiagLog.Info("AIMPWIN APPEARED " + w + " | fg=" + ForegroundClass());
+                            }
                         }
+                        foreach (var w in _lastAimpWindows)
+                        {
+                            if (!now.Contains(w))
+                            {
+                                Switcheroo.Core.DiagLog.Info("AIMPWIN GONE " + w + " | fg=" + ForegroundClass());
+                            }
+                        }
+                        _lastAimpWindows = now;
                     }
                     catch { }
                 };
@@ -228,8 +248,44 @@ namespace Switcheroo
             return args;
         }
 
-        private static string ForegroundClass()
+        /// <summary>扫 AIMP 的全部窗口（顶层 + 子窗口），返回 "TOP/CHILD 类名 hwnd title" 集合。</summary>
+        private static HashSet<string> ScanAimpWindows()
         {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                EnumWindows(delegate(IntPtr h, IntPtr l)
+                {
+                    var sb = new StringBuilder(256);
+                    GetClassName(h, sb, 256);
+                    var cls = sb.ToString();
+                    if (cls.StartsWith("TAIMP", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var tb = new StringBuilder(128);
+                        GetWindowText(h, tb, 128);
+                        set.Add("TOP " + cls + " 0x" + h.ToInt64().ToString("X") + " title='" + tb + "'");
+                        EnumChildWindows(h, delegate(IntPtr c, IntPtr l2)
+                        {
+                            var cb = new StringBuilder(256);
+                            GetClassName(c, cb, 256);
+                            var cc = cb.ToString();
+                            if (cc.StartsWith("TAIMP", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var tb2 = new StringBuilder(128);
+                                GetWindowText(c, tb2, 128);
+                                set.Add("CHILD " + cc + " 0x" + c.ToInt64().ToString("X") + " title='" + tb2 + "'");
+                            }
+                            return true;
+                        }, IntPtr.Zero);
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+            return set;
+        }
+
+        private static string ForegroundClass()        {
             try
             {
                 var h = GetForegroundWindow();
