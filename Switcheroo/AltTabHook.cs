@@ -58,6 +58,12 @@ namespace Switcheroo
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string lpszClass, string lpszWindow);
+
+        private System.Windows.Threading.DispatcherTimer _bannerWatch;
+        private IntPtr _lastBanner = IntPtr.Zero;
+
         // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
         private readonly LowLevelKeyboardHook _lowLevelKeyboardHook;
 
@@ -76,6 +82,33 @@ namespace Switcheroo
             _lowLevelKeyboardHook = new LowLevelKeyboardHook();
             _lowLevelKeyboardHook.MessageIntercepted += OnMessageIntercepted;
             _lowLevelKeyboardHook.StartHook();
+
+            // 诊断：轮询 AIMP 的横幅窗口（单次 API，开销可忽略），记录它出现的准确时刻 + 当时前台窗口
+            try
+            {
+                _bannerWatch = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(400)
+                };
+                _bannerWatch.Tick += delegate
+                {
+                    try
+                    {
+                        var h = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "TAIMPAboutBanner", null);
+                        if (h != _lastBanner)
+                        {
+                            Switcheroo.Core.DiagLog.Info(
+                                "BANNER " + (_lastBanner == IntPtr.Zero ? "APPEARED" : "CLOSED")
+                                + " hwnd=0x" + h.ToInt64().ToString("X")
+                                + " fg=" + ForegroundClass());
+                            _lastBanner = h;
+                        }
+                    }
+                    catch { }
+                };
+                _bannerWatch.Start();
+            }
+            catch { }
         }
 
         /// <summary>

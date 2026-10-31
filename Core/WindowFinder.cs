@@ -37,7 +37,11 @@ namespace Switcheroo.Core
             "ApplicationManager_DesktopShellWindow",
             "Windows.UI.Core.CoreWindow",
             "MultitaskingViewFrame",
-            "XamlExplorerHostIslandWindow"
+            "XamlExplorerHostIslandWindow",
+            // AIMP 的非应用窗口：贴边控制条（标题 TrayControl）、关于/横幅
+            "TAIMPTrayControl",
+            "TAIMPAboutBanner",
+            "TAIMPAboutForm"
         };
 
         public List<AppWindow> GetWindows()
