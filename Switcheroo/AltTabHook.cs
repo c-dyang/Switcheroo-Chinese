@@ -110,8 +110,9 @@ namespace Switcheroo
                         _altDownSuppressed = true;
                         MarkLastSwallowed();
                     }
-                    else if (!isDown && _altDownSuppressed)
+                    else if (!isDown && (_altDownSuppressed || ShouldSuppressAltDown()))
                     {
+                        // 抬起时前台才变成贴边窗口的情况也要吞：一次孤立的 Alt 抬起同样会触发它的菜单动作
                         handled = true;
                         _altDownSuppressed = false;
                         MarkLastSwallowed();
