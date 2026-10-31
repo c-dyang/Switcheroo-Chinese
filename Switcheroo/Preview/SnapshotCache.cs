@@ -116,5 +116,3 @@ namespace Switcheroo.Preview
         private static extern bool DeleteObject(IntPtr hObject);
     }
 }
-    }
-}
