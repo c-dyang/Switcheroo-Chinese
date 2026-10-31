@@ -85,7 +85,7 @@ namespace Switcheroo
 
             // 钩子被用户在选项里关掉时完全不要介入，避免把 Alt+Tab 吃掉
             bool hookEnabled;
-            try { hookEnabled = Settings.Default.AltTabHook; } catch { hookEnabled = false; }
+            try { hookEnabled = Switcheroo.Properties.Settings.Default.AltTabHook; } catch { hookEnabled = false; }
             if (!hookEnabled)
             {
                 return;
