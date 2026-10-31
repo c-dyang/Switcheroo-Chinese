@@ -64,6 +64,11 @@ namespace Switcheroo
         // 内存环形缓冲：钩子回调里绝不做文件 IO（IO 会拖慢回调 → 触发 LowLevelHooksTimeout）
         private readonly List<string> _trace = new List<string>(96);
 
+        // 这些前台窗口收到裸 Alt 按下会自己执行命令（AIMP 贴边模式的托盘控制条 → 弹「关于」）。
+        // 只对这些类抑制 Alt，而且按下/抬起成对吞 —— 只吞抬起会让系统认为 Alt 一直按着。
+        private static readonly string[] AltReactiveForegroundClasses = { "TAIMPTrayControl" };
+        private bool _altDownSuppressed;
+
         public AltTabHook()
         {
             _lowLevelKeyboardHook = new LowLevelKeyboardHook();
@@ -90,6 +95,27 @@ namespace Switcheroo
 
             // 全键记录（内存，无 IO）：漏给前台的键在 trace 里没有 SWALLOWED 标记
             Trace(vk, msg, false, "pass");
+
+            // ---- Alt：仅对"收到裸 Alt 就会自己执行命令"的前台窗口做抑制，且成对吞 ----
+            if (vk == 0x12 || vk == 0xA4 || vk == 0xA5)
+            {
+                if (!handled)
+                {
+                    if (isDown && ShouldSuppressAltDown())
+                    {
+                        handled = true;
+                        _altDownSuppressed = true;
+                        MarkLastSwallowed();
+                    }
+                    else if (!isDown && _altDownSuppressed)
+                    {
+                        handled = true;
+                        _altDownSuppressed = false;
+                        MarkLastSwallowed();
+                    }
+                }
+                return;
+            }
 
             if (handled)
             {
@@ -176,6 +202,32 @@ namespace Switcheroo
             catch
             {
                 return "?";
+            }
+        }
+
+        private static bool ShouldSuppressAltDown()
+        {
+            try
+            {
+                var h = GetForegroundWindow();
+                var sb = new StringBuilder(256);
+                if (GetClassName(h, sb, 256) == 0)
+                {
+                    return false;
+                }
+                var cls = sb.ToString();
+                foreach (var c in AltReactiveForegroundClasses)
+                {
+                    if (string.Equals(cls, c, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
             }
         }
 
