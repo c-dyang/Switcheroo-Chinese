@@ -119,7 +119,6 @@
     <Compile Include="Theme.cs" />
     <Compile Include="Usage\UsageTracker.cs" />
     <Compile Include="Ipc\CommandServer.cs" />
-    <Compile Include="Preview\DwmPreview.cs" />
     <Compile Include="Preview\PreviewWindow.cs" />
     <Compile Include="SimpleJson.cs" />
     <Compile Include="TitleFormatter.cs" />

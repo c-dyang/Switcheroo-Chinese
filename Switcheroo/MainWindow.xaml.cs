@@ -1369,6 +1369,7 @@ namespace Switcheroo
         /// <summary>按当前选中项刷新缩略图预览窗口。开关关闭或无选中项时隐藏。</summary>
         private void UpdatePreviewForSelection()
         {
+            _selectionChangedAt = DateTime.UtcNow;
             try
             {
                 if (!Settings.Default.ThumbnailPreviewEnabled)
@@ -2424,10 +2425,12 @@ namespace Switcheroo
 
         private string _cycleGroupProcess;
         private DateTime _cycleAt = DateTime.MinValue;
+        private AppWindowViewModel _lastCycleVm;
+        private DateTime _selectionChangedAt = DateTime.MinValue;
 
         /// <summary>
-        /// 分组轮换：当上一次按键已经停在某个分组条目上（2 秒内、无搜索词），
-        /// 再按 Tab 不再移动选择，而是把该条目轮换到组内下一个窗口。
+        /// 分组轮换（Windows 原生语义）：快速连按 Tab 是"移出该组"，只有在某个分组条目上**停留**
+        /// （或刚刚轮换过）再按 Tab 才在组内换窗口。
         /// </summary>
         private bool TryCycleGroupInPlace()
         {
@@ -2441,21 +2444,26 @@ namespace Switcheroo
                 var vm = lb.SelectedItem as AppWindowViewModel;
                 if (vm == null || vm.GroupTotal < 2)
                 {
-                    _cycleGroupProcess = null;
+                    _lastCycleVm = null;
                     return false;
                 }
 
-                bool sameGroup = string.Equals(_cycleGroupProcess, vm.ProcessTitle, StringComparison.OrdinalIgnoreCase)
-                                 && (DateTime.UtcNow - _cycleAt).TotalSeconds <= 2;
-                if (!sameGroup)
+                bool justCycled = ReferenceEquals(vm, _lastCycleVm);
+                bool dwelled = (DateTime.UtcNow - _selectionChangedAt).TotalSeconds >= 0.6;
+
+                if (!justCycled && !dwelled)
                 {
-                    _cycleGroupProcess = vm.ProcessTitle;
-                    _cycleAt = DateTime.UtcNow;
+                    _lastCycleVm = vm;
+                    return false; // 快速连按 → 正常移动
+                }
+
+                if (!vm.RotateToNextGroupMember())
+                {
+                    _lastCycleVm = vm;
                     return false;
                 }
 
-                if (!vm.RotateToNextGroupMember()) return false;
-                _cycleAt = DateTime.UtcNow;
+                _lastCycleVm = vm;
                 try
                 {
                     Switcheroo.Core.DiagLog.Info("GroupCycle: " + vm.ProcessTitle + " -> hwnd=0x"
